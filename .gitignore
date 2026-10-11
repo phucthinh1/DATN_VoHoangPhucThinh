@@ -1,0 +1,52 @@
+# =======================================================
+# Git Ignore for DATN - AI Fake Image Detection Project
+# =======================================================
+
+# 1. Dataset & Media (TUYỆT ĐỐI KHÔNG PUSH LÊN GITHUB)
+dataset/
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.bmp
+*.gif
+*.zip
+*.tar
+*.gz
+
+# 2. Virtual Environment & Package Managers
+venv/
+env/
+.env
+ENV/
+*.egg-info/
+dist/
+build/
+
+# 3. Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# 4. Deep Learning Model Weights & Checkpoints (Quá lớn so với GitHub)
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.bin
+*.h5
+weights/
+checkpoints/
+logs/
+wandb/
+
+# 5. IDE & OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+Thumbs.db
+Desktop.ini
+.DS_Store
