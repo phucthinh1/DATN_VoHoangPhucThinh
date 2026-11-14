@@ -35,7 +35,7 @@ class FFTPreprocessor:
     """
     BƯỚC 4C: Tiền xử lý miền tần số phổ 2D FFT cho Nhánh Phổ (Spectral Branch).
 
-    Thiết kế Baseline mặc định (`mode='raw'`, `use_hann=False`, `remove_dc=False`, `normalize=True`):
+    Thiết kế Baseline (`mode='raw'`, `use_hann=False`, `remove_dc=True`, `normalize=True`):
     1. Tiếp nhận `view_native` (ảnh PIL RGB 224x224 cắt trực tiếp từ pixel gốc ở Bước 3,
        TUYỆT ĐỐI KHÔNG Resize để bảo toàn dải tần số cao tới giới hạn Nyquist).
     2. Chuyển sang 1 kênh độ chói biểu kiến Luma Y' (ITU-R BT.601) trực tiếp trên `float32` [0.0, 1.0]:

@@ -23,6 +23,8 @@ CURRENT_DIR = Path(__file__).resolve().parent
 SYSTEM_DIR = CURRENT_DIR.parent
 CODE_DIR = SYSTEM_DIR.parent
 PREPROC_DIR = CODE_DIR / "pre_processing" / "pre_processing_all_and_branchs"
+# Suy ra từ vị trí file thay vì gán cứng ổ D:\ để chạy được khi clone sang Colab/Linux
+DEFAULT_DATASET_ROOT = CODE_DIR.parent / "dataset" / "Defactify_dataset"
 
 for p in (str(CURRENT_DIR), str(PREPROC_DIR)):
     if p not in sys.path:
@@ -64,11 +66,15 @@ class DefactifyDataset(Dataset):
     def __init__(
         self,
         df: pd.DataFrame,
-        dataset_root: Union[str, Path] = Path(r"D:\nam_4\DATN\dataset\Defactify_dataset"),
+        dataset_root: Union[str, Path] = DEFAULT_DATASET_ROOT,
         mode: str = "train",
         active_branches: Tuple[str, ...] = ("spatial", "semantic", "spectral"),
         force_flip: Optional[bool] = None,
         crop_size: int = 224,
+        flip_prob: float = 0.5,
+        jpeg_prob: float = 0.0,
+        jpeg_quality_range: Tuple[int, int] = (70, 95),
+        fixed_jpeg_quality: Optional[int] = None,
         spatial_view_mode: str = "native",
         fft_mode: str = "raw",
         fft_use_hann: bool = False,
@@ -85,6 +91,10 @@ class DefactifyDataset(Dataset):
             active_branches: Bộ các nhánh hoạt động, ví dụ ('spatial', 'semantic', 'spectral') hoặc chỉ ('spectral',).
             force_flip: Chỉ định cưỡng bức lật ảnh (True/False) khi mode='extract', mặc định None (tự động theo seed).
             crop_size: Kích thước cạnh vuông cho view_native (mặc định 224).
+            flip_prob: Xác suất lật ngang ngẫu nhiên khi mode='train' (mặc định 0.5).
+            jpeg_prob: Xác suất nén JPEG ngẫu nhiên khi mode='train' (mặc định 0.0).
+            jpeg_quality_range: Dải chất lượng nén JPEG (min, max), mặc định (70, 95).
+            fixed_jpeg_quality: Mức nén JPEG cố định phục vụ thực nghiệm độ bền (Robustness test) ở Chương 4.
             spatial_view_mode: 'native' (mặc định) hoặc 'global' cho nhánh EfficientNet.
             fft_mode: 'raw' (mặc định Baseline) hoặc 'gaussian_residual' cho nhánh FFT.
             fft_use_hann: True để bật cửa sổ Hann, mặc định False (Baseline).
@@ -123,6 +133,9 @@ class DefactifyDataset(Dataset):
             raise ValueError("active_branches không được rỗng! Phải bật ít nhất 1 nhánh.")
         self.active_branches: Tuple[str, ...] = tuple(active_branches)
 
+        # Chặn sớm ở __init__ thay vì để CommonProcess văng lỗi giữa chừng trong worker
+        if force_flip is not None and self.mode != "extract":
+            raise ValueError(f"force_flip chỉ dùng với mode='extract' (hiện tại mode='{self.mode}').")
         self.force_flip = force_flip
         self.crop_size = crop_size
         self.sampler: Optional[Any] = None
@@ -135,7 +148,9 @@ class DefactifyDataset(Dataset):
         if missing_cols:
             raise KeyError(f"DataFrame thiếu các cột bắt buộc: {missing_cols}")
 
-        self.filepaths: List[str] = [str(p).replace("/", "\\") for p in df["filepath"].tolist()]
+        # metadata.csv lưu dấu '\' của Windows; trên Linux '\' không phải dấu phân cách thư mục
+        # nên phải đổi sang '/', dạng mà pathlib hiểu đúng trên cả Windows lẫn Linux
+        self.filepaths: List[str] = [str(p).replace("\\", "/") for p in df["filepath"].tolist()]
         self.labels_a: np.ndarray = df["label_a"].to_numpy(dtype=np.float32)
         self.labels_b: np.ndarray = df["label_b"].to_numpy(dtype=np.int64)
         self.group_ids: np.ndarray = df["group_id"].to_numpy(dtype=np.int64)
@@ -148,6 +163,10 @@ class DefactifyDataset(Dataset):
         self.common_proc = CommonProcess(
             mode=self.mode,
             crop_size=self.crop_size,
+            flip_prob=flip_prob if self.mode == "train" else 0.0,
+            jpeg_prob=jpeg_prob if self.mode == "train" else 0.0,
+            jpeg_quality_range=jpeg_quality_range,
+            fixed_jpeg_quality=fixed_jpeg_quality,
             seed=seed,
         )
 
@@ -199,6 +218,10 @@ class DefactifyDataset(Dataset):
         """
         Trích xuất 1 mẫu dữ liệu đã qua tiền xử lý, đóng gói an toàn với PyTorch DataLoader.
         """
+        # range()[idx] nhận int/np.int64/Tensor 0-d, quy đổi chỉ số âm, nhưng vẫn báo IndexError khi vượt biên
+        # và TypeError với số thực (int() sẽ âm thầm cắt 2.9 -> 2, còn -n-1 -> mẫu cuối)
+        idx = range(self._num_samples)[idx]
+
         rel_path = self.filepaths[idx]
         full_path = self.dataset_root / rel_path
 
@@ -246,28 +269,53 @@ class DefactifyDataset(Dataset):
 # ==============================================================================
 # HÀM TIỆN ÍCH TRỌN GÓI: build_dataloaders
 # ==============================================================================
+def _loader_kwargs(num_workers: int, pin_memory: Optional[bool], persistent_workers: bool) -> Dict[str, Any]:
+    kwargs: Dict[str, Any] = {
+        "num_workers": num_workers,
+        "pin_memory": torch.cuda.is_available() if pin_memory is None else bool(pin_memory),
+    }
+    if num_workers > 0:
+        # Epoch được đồng bộ qua shared memory của CommonProcess nên worker sống lâu vẫn nhận đúng epoch mới,
+        # đồng thời tránh phải spawn lại worker (rất chậm trên Windows) ở mỗi epoch
+        kwargs["persistent_workers"] = persistent_workers
+    return kwargs
+
+
 def build_dataloaders(
-    dataset_root: Union[str, Path] = Path(r"D:\nam_4\DATN\dataset\Defactify_dataset"),
+    dataset_root: Union[str, Path] = DEFAULT_DATASET_ROOT,
     metadata_path: Optional[Union[str, Path]] = None,
     batch_size: int = 32,
     num_workers: int = 2,
     active_branches: Tuple[str, ...] = ("spatial", "semantic", "spectral"),
+    spatial_view_mode: str = "native",
+    flip_prob: float = 0.5,
+    jpeg_prob: float = 0.0,
+    jpeg_quality_range: Tuple[int, int] = (70, 95),
+    fixed_jpeg_quality: Optional[int] = None,
     fft_mode: str = "raw",
     fft_use_hann: bool = False,
     fft_remove_dc: bool = True,
     seed: int = 42,
     pin_memory: Optional[bool] = None,
     drop_last: bool = False,
+    persistent_workers: bool = True,
+    eval_batch_size: Optional[int] = None,
 ) -> Tuple[DataLoader, DataLoader, DataLoader, BalancedGroupSampler]:
     """
     Khởi tạo trọn gói toàn bộ pipeline dữ liệu (Train, Val, Test DataLoaders và BalancedGroupSampler).
 
     Quy tắc nghiệp vụ cốt lõi:
     - Train Loader: Dùng BalancedGroupSampler (đảm bảo 16 Real : 16 AI mỗi batch, xoay vòng 100% AI qua 3 epochs).
-      Bắt buộc đặt shuffle=False (do Sampler đã xáo trộn) và drop_last=False (để không làm rơi 18 ảnh cuối).
-    - Val Loader: Đánh giá trên tập Known (5,836 ảnh), phân phối tự nhiên, shuffle=False, drop_last=False.
-    - Test Loader: Đánh giá toàn diện trên cả 6 nguồn Known + Unseen (43,800 ảnh), shuffle=False, drop_last=False.
+      Bắt buộc đặt shuffle=False (do Sampler đã xáo trộn). `drop_last` chỉ áp dụng cho Train.
+    - Val Loader: Đánh giá trên tập Known (5,836 ảnh), phân phối tự nhiên, shuffle=False, LUÔN drop_last=False.
+    - Test Loader: Đánh giá toàn diện trên cả 6 nguồn Known + Unseen (43,800 ảnh), shuffle=False, LUÔN drop_last=False
+      (nếu bỏ batch cuối thì metric sai lệch vì thiếu ảnh của nguồn cuối cùng trong metadata).
+    - Tái lập 100%: `generator` của Train Loader được gieo bằng `seed`, nên worker_info.seed (đầu vào của RNG lật/cắt
+      trong CommonProcess) giống hệt nhau giữa các lần chạy cùng seed.
     - pin_memory: Tự động nhận diện GPU (True nếu có CUDA, False nếu CPU) để không bắn cảnh báo vàng.
+    - Tối ưu RAM Windows: persistent_workers=True chỉ áp dụng cho Train Loader để tăng tốc lặp epoch;
+      Val và Test Loaders dùng persistent_workers=False để tự giải phóng tiến trình worker khi xong lượt đánh giá.
+    - Bắt buộc gọi `train_loader.dataset.set_epoch(epoch)` ở đầu mỗi epoch, trước vòng lặp batch.
 
     Returns:
         (train_loader, val_loader, test_loader, train_sampler)
@@ -278,8 +326,9 @@ def build_dataloaders(
     # Bước 1: Rút trích bảng dữ liệu phân chia chuẩn trên RAM (không ghi đè file đĩa)
     train_df, val_df, test_df = get_split_dataframes(metadata_path=str(meta_p))
 
-    # Tự động nhận diện pin_memory an toàn
-    auto_pin = torch.cuda.is_available() if pin_memory is None else bool(pin_memory)
+    train_loader_kwargs = _loader_kwargs(num_workers, pin_memory, persistent_workers)
+    eval_loader_kwargs = _loader_kwargs(num_workers, pin_memory, persistent_workers=False)
+    eval_bs = eval_batch_size or batch_size
 
     # Bước 2: Khởi tạo Sampler cân bằng nhóm theo từng cặp Real - AI cho tập Train
     train_sampler = BalancedGroupSampler(train_df, seed=seed)
@@ -290,6 +339,11 @@ def build_dataloaders(
         dataset_root=root_path,
         mode="train",
         active_branches=active_branches,
+        spatial_view_mode=spatial_view_mode,
+        flip_prob=flip_prob,
+        jpeg_prob=jpeg_prob,
+        jpeg_quality_range=jpeg_quality_range,
+        fixed_jpeg_quality=None,  # Train không dùng fixed JPEG
         fft_mode=fft_mode,
         fft_use_hann=fft_use_hann,
         fft_remove_dc=fft_remove_dc,
@@ -303,6 +357,11 @@ def build_dataloaders(
         dataset_root=root_path,
         mode="eval",
         active_branches=active_branches,
+        spatial_view_mode=spatial_view_mode,
+        flip_prob=0.0,
+        jpeg_prob=0.0,
+        jpeg_quality_range=jpeg_quality_range,
+        fixed_jpeg_quality=None,  # Val tập Known nguyên bản
         fft_mode=fft_mode,
         fft_use_hann=fft_use_hann,
         fft_remove_dc=fft_remove_dc,
@@ -314,6 +373,11 @@ def build_dataloaders(
         dataset_root=root_path,
         mode="eval",
         active_branches=active_branches,
+        spatial_view_mode=spatial_view_mode,
+        flip_prob=0.0,
+        jpeg_prob=0.0,
+        jpeg_quality_range=jpeg_quality_range,
+        fixed_jpeg_quality=fixed_jpeg_quality,  # Nhận fixed_jpeg_quality phục vụ Robustness Test
         fft_mode=fft_mode,
         fft_use_hann=fft_use_hann,
         fft_remove_dc=fft_remove_dc,
@@ -326,30 +390,59 @@ def build_dataloaders(
         batch_size=batch_size,
         sampler=train_sampler,
         shuffle=False,
-        num_workers=num_workers,
-        pin_memory=auto_pin,
         drop_last=drop_last,
+        generator=torch.Generator().manual_seed(seed),
+        **train_loader_kwargs,
     )
 
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=auto_pin,
-        drop_last=drop_last,
-    )
-
-    test_loader = DataLoader(
-        test_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=auto_pin,
-        drop_last=drop_last,
-    )
+    val_loader = DataLoader(val_dataset, batch_size=eval_bs, shuffle=False, drop_last=False, **eval_loader_kwargs)
+    test_loader = DataLoader(test_dataset, batch_size=eval_bs, shuffle=False, drop_last=False, **eval_loader_kwargs)
 
     return train_loader, val_loader, test_loader, train_sampler
+
+
+def build_extract_loader(
+    split: str,
+    force_flip: bool = False,
+    active_branches: Tuple[str, ...] = ("semantic",),
+    dataset_root: Union[str, Path] = DEFAULT_DATASET_ROOT,
+    metadata_path: Optional[Union[str, Path]] = None,
+    batch_size: int = 64,
+    num_workers: int = 2,
+    pin_memory: Optional[bool] = None,
+    **dataset_kwargs: Any,
+) -> DataLoader:
+    """
+    Loader tất định (mode='extract') phục vụ trích xuất & lưu đệm đặc trưng của nhánh đóng băng (CLIP) cho Fusion MLP.
+
+    - Duyệt tuần tự TOÀN BỘ ảnh của split (Train = 27,812 ảnh, không qua Sampler), CenterCrop, không ngẫu nhiên.
+    - Gọi 2 lần với force_flip=False/True để có đặc trưng cả ảnh gốc lẫn ảnh lật, giữ nguyên augmentation lật ngang
+      khi huấn luyện Fusion mà không phải chạy lại ViT-B/16 mỗi epoch.
+    - Mỗi batch có 'sample_idx' (chỉ số dòng trong DataFrame của split) và 'filepath' để làm khóa tra cứu đặc trưng.
+    """
+    split_key = str(split).strip().lower()
+    root_path = Path(dataset_root)
+    meta_p = Path(metadata_path) if metadata_path else root_path / "metadata.csv"
+    train_df, val_df, test_df = get_split_dataframes(metadata_path=str(meta_p))
+    split_map = {"train": train_df, "val": val_df, "validation": val_df, "test": test_df}
+    if split_key not in split_map:
+        raise ValueError(f"split không hợp lệ: '{split}'. Chỉ chấp nhận 'train', 'val', 'test'.")
+
+    dataset = DefactifyDataset(
+        df=split_map[split_key],
+        dataset_root=root_path,
+        mode="extract",
+        active_branches=active_branches,
+        force_flip=force_flip,
+        **dataset_kwargs,
+    )
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        drop_last=False,
+        **_loader_kwargs(num_workers, pin_memory, persistent_workers=False),
+    )
 
 
 # ==============================================================================
@@ -365,12 +458,16 @@ def run_unit_tests():
     5. Kiểm tra cơ chế đồng bộ kép set_epoch() giữa Dataset và BalancedGroupSampler.
     6. Kiểm tra tích hợp build_dataloaders() thực tế trên tập Defactify thật với DataLoader đa luồng
        (num_workers=2): Xác nhận 16 Real : 16 AI mỗi batch và kiểm tra tính toán vẹn toàn khi drop_last=False.
+    7. Đường dẫn đa nền tảng (không còn dấu '\' gây hỏng trên Linux/Colab).
+    8. Tái lập lật/cắt ngẫu nhiên giữa 2 lần chạy cùng seed với num_workers=2.
+    9. drop_last chỉ áp dụng cho Train, Val/Test luôn đủ mẫu.
+    10. build_extract_loader: tuần tự, tất định, cặp gốc/lật đối xứng gương; chặn force_flip sai mode.
     """
     print("=" * 85)
     print("BẮT ĐẦU KIỂM THỬ NGHIỆM THU BƯỚC 5A: dataset.py (Unified Multi-Branch Dataset)")
     print("=" * 85)
 
-    dataset_root = Path(r"D:\nam_4\DATN\dataset\Defactify_dataset")
+    dataset_root = DEFAULT_DATASET_ROOT
     meta_path = dataset_root / "metadata.csv"
 
     if not meta_path.exists():
@@ -483,7 +580,17 @@ def run_unit_tests():
     t_noflip = ds_extract_noflip[0]["spatial"]
     t_flip = ds_extract_flip[0]["spatial"]
     assert torch.allclose(t_flip, t_noflip.flip(-1), atol=1e-5), "force_flip=True không đối xứng gương với force_flip=False!"
-    print("  + Ánh xạ 'val'/'test' -> 'eval' an toàn | force_flip đối xứng gương chuẩn xác => [PASS]")
+    # Chỉ số kiểu Tensor/âm hợp lệ thì quy đổi đúng; vượt biên hoặc số thực phải báo lỗi, không âm thầm trả mẫu khác
+    ds5 = ds_extract_noflip
+    assert ds5[torch.tensor(1)]["sample_idx"] == 1 and ds5[np.int64(1)]["sample_idx"] == 1
+    assert ds5[-1]["sample_idx"] == 4
+    for bad_idx, err in ((5, IndexError), (-6, IndexError), (2.9, TypeError)):
+        try:
+            ds5[bad_idx]
+            raise AssertionError(f"ds[{bad_idx}] lẽ ra phải báo {err.__name__}!")
+        except err:
+            pass
+    print("  + Ánh xạ 'val'/'test' -> 'eval' an toàn | force_flip đối xứng gương chuẩn xác | idx Tensor/âm/vượt biên => [PASS]")
 
     # -------------------------------------------------------------------------
     # TEST 5: Kiểm tra cơ chế đồng bộ kép set_epoch() giữa Dataset và Sampler
@@ -557,8 +664,65 @@ def run_unit_tests():
         if batches_checked >= 2:
             break
 
+    # -------------------------------------------------------------------------
+    # TEST 7: Đường dẫn đa nền tảng (Windows '\' -> '/')
+    # -------------------------------------------------------------------------
+    print("\n[KIỂM TRA 7] Đường dẫn đa nền tảng (metadata lưu '\\' của Windows):")
+    assert all("\\" not in p for p in ds_all.filepaths), "Còn dấu '\\' trong filepaths -> hỏng trên Linux/Colab!"
+    from pathlib import PurePosixPath
+    posix_parts = PurePosixPath(ds_all.filepaths[0]).parts
+    assert posix_parts[0] == "train" and len(posix_parts) == 3, f"Linux sẽ tách sai đường dẫn: {posix_parts}"
+    print(f"  + '{ds_all.filepaths[0]}' -> Linux tách thành {posix_parts} => [PASS]")
+
+    # -------------------------------------------------------------------------
+    # TEST 8: Tái lập augmentation giữa 2 lần chạy cùng seed (num_workers=2)
+    # -------------------------------------------------------------------------
+    print("\n[KIỂM TRA 8] Tái lập lật/cắt ngẫu nhiên giữa 2 lần build_dataloaders(seed=42):")
+
+    def _first_batch_aug(epoch: int) -> Tuple[List[int], List[int]]:
+        tl, _, _, _ = build_dataloaders(
+            dataset_root=dataset_root, batch_size=32, num_workers=2,
+            active_branches=("spectral",), seed=42, persistent_workers=False,
+        )
+        tl.dataset.set_epoch(epoch)
+        b = next(iter(tl))
+        return b["meta"]["is_flipped"].int().tolist(), b["meta"]["native_crop_box"][:, 0].tolist()
+
+    run_a, run_b = _first_batch_aug(0), _first_batch_aug(0)
+    assert run_a == run_b, "Cùng seed nhưng lật/cắt khác nhau giữa 2 lần chạy -> không tái lập được thực nghiệm!"
+    assert _first_batch_aug(1) != run_a, "Epoch 1 lặp lại y hệt augmentation của epoch 0!"
+    print("  + Cùng seed -> lật & tọa độ cắt trùng khớp 100% | Đổi epoch -> augmentation mới => [PASS]")
+
+    # -------------------------------------------------------------------------
+    # TEST 9: Val/Test không bao giờ rơi mẫu, kể cả khi drop_last=True cho Train
+    # -------------------------------------------------------------------------
+    print("\n[KIỂM TRA 9] drop_last=True chỉ tác động lên Train, Val/Test giữ đủ mẫu:")
+    tl, vl, te, _ = build_dataloaders(
+        dataset_root=dataset_root, batch_size=32, num_workers=0, active_branches=("spectral",), drop_last=True,
+    )
+    assert len(tl) == 13906 // 32 and not vl.drop_last and not te.drop_last
+    assert len(te) == -(-43800 // 32), f"Test loader rơi mẫu: {len(te)} batches"
+    print(f"  + Train {len(tl)} batch (bỏ 18 ảnh) | Val {len(vl)} batch | Test {len(te)} batch đủ 43,800 ảnh => [PASS]")
+
+    # -------------------------------------------------------------------------
+    # TEST 10: build_extract_loader cho trích xuất đặc trưng CLIP đóng băng
+    # -------------------------------------------------------------------------
+    print("\n[KIỂM TRA 10] build_extract_loader (mode='extract', tuần tự, tất định, gốc + lật):")
+    ex_plain = build_extract_loader("val", force_flip=False, active_branches=("spatial",), batch_size=8, num_workers=0)
+    ex_flip = build_extract_loader("val", force_flip=True, active_branches=("spatial",), batch_size=8, num_workers=0)
+    assert len(ex_plain.dataset) == 5836 and ex_plain.dataset.mode == "extract"
+    b_plain, b_flip = next(iter(ex_plain)), next(iter(ex_flip))
+    assert b_plain["sample_idx"].tolist() == list(range(8)), "Extract loader phải duyệt tuần tự theo thứ tự DataFrame!"
+    assert torch.allclose(b_flip["spatial"], b_plain["spatial"].flip(-1), atol=1e-5)
+    try:
+        DefactifyDataset(df=val_df.iloc[:5], dataset_root=dataset_root, mode="train", force_flip=True)
+        raise AssertionError("force_flip với mode='train' phải bị chặn ngay ở __init__!")
+    except ValueError:
+        pass
+    print("  + Duyệt tuần tự 5,836 ảnh | bản lật đối xứng gương bản gốc | chặn force_flip sai mode => [PASS]")
+
     print("\n" + "=" * 85)
-    print("TẤT CẢ 6 TIÊU CHUẨN NGHIỆM THU BƯỚC 5A (dataset.py) ĐÃ VƯỢT QUA 100%!")
+    print("TẤT CẢ 10 TIÊU CHUẨN NGHIỆM THU BƯỚC 5A (dataset.py) ĐÃ VƯỢT QUA 100%!")
     print("=" * 85)
 
 
