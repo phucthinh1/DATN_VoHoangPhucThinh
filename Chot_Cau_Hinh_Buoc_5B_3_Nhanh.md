@@ -411,23 +411,368 @@ Mô hình giải quyết triệt để xung đột giữa đặc trưng cấp ca
 
 ---
 
-## 11. Tổng hợp Đối chiếu Kết quả 2 Nhánh Độc lập (Spatial vs. Spectral) trên Tập Validation Known
+## 11. Bảng thông số kỹ thuật chi tiết phục vụ báo cáo: Nhánh Semantic (CLIP ViT-B/16 Linear Probe)
 
-Bảng dưới đây đối chiếu trực tiếp hiệu năng từ `best_spatial.pth` (`Epoch 15`) và `best_spectral.pth` (`Epoch 29`) trên cùng tập **5,836 ảnh Validation Known** (trước khi bước sang triển khai nhánh thứ 3 `CLIP.py` và tầng `Fusion MLP`):
+> [!NOTE]
+> Mục này ghi lại toàn bộ thông số thực nghiệm chính thức của nhánh thứ 3 (`CLIP.py` + `LinearProbeHead`) đã được huấn luyện trên Feature Cache đóng băng ngày 17/11/2026 (`train_fusion.py --mode probe --sanity-check`). Dùng làm dữ liệu gốc trích dẫn vào Chương 3 và Chương 4 của Đồ án tốt nghiệp.
 
-| Tiêu chí so sánh | Nhánh Spatial (`EfficientNet-B0`) | Nhánh Spectral (`Residual Spectral CNN`) | Nhận xét kỹ thuật |
-| :--- | :---: | :---: | :--- |
-| **Nguồn gốc trọng số** | Pretrained ImageNet-1K V1 (Fine-tune 2 pha) | **Train from scratch 100%** (Khởi tạo Kaiming + Zero-Init) | Spectral không cần dữ liệu ngoài vẫn đạt gần 98% AUC |
-| **Tổng số tham số** | `4,008,829` (`1280-D` feature) | `5,317,409` (`256-D` feature) | Cả 2 đều cực nhẹ (< 1.5 GB VRAM trên RTX 3050) |
-| **Số Epoch & Thời gian** | `16` epochs (`37.6` phút) | `30` epochs (`72.7` phút) | Cả 2 hội tụ mượt đến đúng epoch cuối cùng |
-| **Val ROC-AUC (Overall)** | **`0.9985`** | **`0.9794`** | Khoảng cách chỉ `0.0191` dù Spectral chỉ nhìn phổ 2D |
-| **Val AP (PR-AUC)** | **`0.9995`** | **`0.9926`** | Cả 2 đạt độ chính xác xếp hạng cực cao |
-| **Val Balanced Accuracy** | **`98.22%`** | **`92.32%`** | Tỷ lệ phân biệt cân bằng vượt ngưỡng 92% ở cả 2 nhánh |
-| **FPR (Báo động giả Real)** | `2.26%` (`33/1,459`) | `8.70%` (`127/1,459`) | Spatial kiểm soát biên độ sai số Real tốt hơn |
-| **$P(\text{AI}|\text{Real})$ / $P(\text{AI}|\text{AI})$** | `0.0235` / `0.9849` | `0.1029` / `0.8903` | Độ tách biệt xác suất giữa 2 lớp rất rõ rệt |
-| **AUC từng model (`SD2.1` / `SDXL` / `DE3`)** | `0.9970` / `0.9991` / `0.9995` | `0.9650` / `0.9771` / `0.9961` | Đặc biệt mạnh trên `DALL-E 3` ở cả không gian lẫn phổ |
+### 11.1. Kiến trúc mạng và Phân bổ tham số (Model Architecture)
+* **Khung xương (Backbone):** `OpenAI CLIP ViT-B/16` (`open_clip 4.2.1`, trọng số `pretrained="openai"`, kích hoạt `QuickGELU=True`), loại bỏ hoàn toàn Text Encoder và chỉ giữ Visual Encoder (`self.visual`).
+* **Trạng thái Backbone:** **Đóng băng 100%** (`requires_grad=False`, luôn khóa ở `.eval()`). Đặc trưng được trích xuất một lần và lưu đệm (Feature Cache) gồm `27,812` ảnh Train (cả bản gốc & lật ngang) và `5,836` ảnh Val.
+* **Đầu vào (Input Shape):**
+  - Đưa vào Backbone: `(B, 3, 224, 224)` với `input_key = "semantic"` từ `view_global` (Shortest-Edge Resize `224` Bicubic $\to$ CenterCrop `224` $\to$ Chuẩn hóa `CLIP_MEAN` / `CLIP_STD`).
+  - Vector đặc trưng đầu ra: **`512` chiều**, được ép `float32` và **chuẩn hóa $L_2$** về siêu cầu đơn vị ($\|f\|_2 = 1.0$).
+* **Đầu phân loại (Linear Probe Head):** `Dropout(p=0.0) -> Linear(512 -> 1, bias=True)` xuất 1 logit `(B,)` theo phương pháp UnivFD (Ojha et al., CVPR 2023).
+* **Phân bổ tham số chi tiết:**
+  - Phần thân Backbone (`ViT-B/16 visual`): **`86,192,640` tham số** (đóng băng, không train).
+  - Phần đầu Linear Probe (`LinearProbeHead`): **`513` tham số** học được (Weight: $1 \times 512$, Bias: $1$).
+  - **Tổng số tham số toàn nhánh (`SemanticBranch`):** **`86,193,153` tham số** (chỉ train **`513` tham số**).
+
+### 11.2. Chiến lược Huấn luyện trên Feature Cache & Tối ưu hóa
+* **Thông tin phiên chạy:** `run_id = semantic_probe_1794853676_157e40` | Thư mục lưu: `code/system/checkpoints/stage2/semantic_probe/` & bản chuẩn notebook `code/system/checkpoints/semantic_baseline/best_semantic.pth`.
+* **Dữ liệu & Cân bằng lô:** Train trên `27,812` mẫu Feature Cache với `BalancedGroupSampler` (`13,906` mẫu/epoch cân bằng 1:1 = 16 Real : 16 AI, `batch_size=32`), đồng bộ lật ngang `flip_prob=0.5`, `num_workers=0` (đọc trực tiếp trên RAM), `seed=42`.
+* **Tối ưu hóa:** `AdamW` (`lr = 1.0e-3`, `weight_decay = 1.0e-4` cho weight, `0.0` cho bias), `warmup_epochs = 0`, lịch `CosineAnnealingLR(T_max=30)`, Gradient Clipping `max_norm = 1.0`, AMP `torch.bfloat16`.
+* **Thời gian & Hội tụ:** Hoàn tất trọn **30 epochs (`0..29`)** không kích hoạt EarlyStopping (`patience=6`) trong **`113.25 giây`** ($\approx 1.89$ phút) | Checkpoint tốt nhất: **`best_semantic.pth` (Epoch 24)**.
+
+#### Diễn biến quá trình huấn luyện theo các mốc tiêu biểu:
+| Epoch | LR | Train Loss | Train AUC | Val Loss | Val AUC | Val Bal-ACC | SD 2.1 AUC | SDXL AUC | DALL-E 3 AUC | Ghi chú |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **00** | `1.00e-3` | `0.5583` | `0.9757` | `0.4593` | `0.9881` | `94.19%` | `0.9721` | `0.9929` | `0.9993` | Ngay Epoch 0 AUC đạt `0.9881` |
+| **02** | `9.89e-4` | `0.3096` | `0.9902` | `0.2817` | `0.9913` | `95.48%` | `0.9793` | `0.9954` | `0.9991` | Val AUC vượt mốc `0.99` |
+| **05** | `9.33e-4` | `0.1989` | `0.9928` | `0.1885` | `0.9933` | `95.97%` | `0.9840` | `0.9967` | `0.9991` | Tăng trưởng đều ở cả 3 generator |
+| **10** | `7.50e-4` | `0.1400` | `0.9945` | `0.1379` | `0.9948` | `96.65%` | `0.9877` | `0.9977` | `0.9991` | Bal-ACC vượt `96.6%` |
+| **15** | `5.01e-4` | `0.1155` | `0.9960` | `0.1204` | `0.9955` | `96.93%` | `0.9894` | `0.9981` | `0.9991` | Tiệm cận bão hòa |
+| **20** | `2.51e-4` | `0.1091` | `0.9960` | `0.1117` | `0.9959` | `96.98%` | `0.9902` | `0.9983` | `0.9991` | Hội tụ ổn định |
+| **24** | **`9.64e-5`** | **`0.1041`** | **`0.9964`** | **`0.1100`** | **`0.9960`** | **`97.02%`** | **`0.9904`** | **`0.9983`** | **`0.9991`** | **★ Lưu `best_semantic.pth`** |
+| **29** | `3.74e-6` | `0.1045` | `0.9962` | `0.1091` | `0.9960` | `97.02%` | `0.9905` | `0.9983` | `0.9991` | Chênh AUC $\le 10^{-4}$ (`min_delta`) |
+
+#### Độ chính xác cuối cùng trên Validation Known (`1,459` Real vs `4,377` AI) tại `best_semantic.pth` (Epoch 24):
+* **Chỉ số tổng thể (Overall):**
+  - **ROC-AUC:** **`0.9960`** (`0.995957`) | **AP (PR-AUC):** **`0.9986`** | **Val BCE Loss:** **`0.1100`**
+  - **Balanced Accuracy:** **`97.02%`** | **Accuracy:** **`96.76%`** | **F1-Score:** **`0.9781`**
+  - **Precision:** **`99.15%`** | **Recall:** **`96.50%`** | **FPR:** **`2.47%`**
+  - **Ma trận nhầm lẫn:** `TP = 4,224` | `FP = 36` | `TN = 1,423` | `FN = 153`
+  - **Phân tách xác suất trung bình:** $P(\text{AI}|\text{Real}) = \mathbf{0.0820}$ vs. $P(\text{AI}|\text{AI}) = \mathbf{0.9149}$
+* **Chi tiết theo từng Generator (Cặp 1:1 với 1,459 ảnh Real `MS_COCO`):**
+  | Generator (Known) | AUC | Balanced ACC | AP | F1 | Recall | FPR | $P(\text{AI}|\text{AI})$ | TP / FN |
+  | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+  | `Stable_Diffusion_2.1` | `0.9904` | `94.59%` | `0.9903` | `0.9442` | `91.64%` | `2.47%` | `0.8273` | `1,337 / 122` |
+  | `Stable_Diffusion_XL` | `0.9983` | `98.05%` | `0.9984` | `0.9806` | `98.56%` | `2.47%` | `0.9473` | `1,438 / 21` |
+  | `DALL-E_3` | `0.9991` | `98.42%` | `0.9992` | `0.9844` | `99.31%` | `2.47%` | `0.9700` | `1,449 / 10` |
+  | **Macro-Avg Known (3 models)** | **`0.9960`** | **`97.02%`** | **`0.9959`** | **`0.9697`** | **`96.50%`** | **`2.47%`** | — | — |
+
+---
+
+## 12. Tổng hợp Đối chiếu Kết quả 3 Nhánh Độc lập trên Tập Validation Known
+
+Bảng dưới đây đối chiếu trực tiếp hiệu năng từ `best_spatial.pth` (`Epoch 15`), `best_semantic.pth` (`Epoch 24`) và `best_spectral.pth` (`Epoch 29`) trên cùng tập **5,836 ảnh Validation Known**:
+
+| Tiêu chí so sánh | Nhánh Spatial (`EfficientNet-B0`) | Nhánh Semantic (`CLIP ViT-B/16`) | Nhánh Spectral (`Residual Spectral CNN`) | Nhận xét kỹ thuật |
+| :--- | :---: | :---: | :---: | :--- |
+| **Nguồn gốc trọng số** | Pretrained ImageNet-1K V1 (Fine-tune 2 pha) | **Pretrained WIT-400M (Đóng băng 100%, Linear Probe)** | **Train from scratch 100%** (Kaiming + Zero-Init) | Semantic chỉ cần train 513 params vẫn đạt `0.9960` AUC |
+| **Tham số train / Tổng** | `4,008,829 / 4,008,829` (`1280-D`) | **`513` / `86,193,153`** (`512-D`) | `5,317,409 / 5,317,409` (`256-D`) | Nhánh Semantic đóng băng hoàn toàn backbone |
+| **Số Epoch & Thời gian** | `16` epochs (`37.6` phút) | `30` epochs (**`1.89` phút** trên cache) | `30` epochs (`72.7` phút) | Feature Cache giúp Linear Probe nhanh gấp ~30 lần |
+| **Val ROC-AUC (Overall)** | **`0.9985`** | **`0.9960`** | **`0.9794`** | Cả 3 nhánh độc lập đều vượt ngưỡng `0.979` AUC |
+| **Val AP (PR-AUC)** | **`0.9995`** | **`0.9986`** | **`0.9926`** | Độ chính xác xếp hạng rất cao trên cả 3 miền |
+| **Val Balanced Accuracy** | **`98.22%`** | **`97.02%`** | **`92.32%`** | Spatial dẫn đầu, theo sát bởi Semantic và Spectral |
+| **FPR (Báo động giả Real)** | **`2.26%`** (`33/1,459`) | `2.47%` (`36/1,459`) | `8.70%` (`127/1,459`) | Spatial và Semantic giữ tỷ lệ báo nhầm Real < 2.5% |
+| **$P(\text{AI}|\text{Real})$ / $P(\text{AI}|\text{AI})$** | `0.0235` / `0.9849` | `0.0820` / `0.9149` | `0.1029` / `0.8903` | Phân tách xác suất Real–AI rõ rệt ở cả 3 nhánh |
+| **AUC từng model (`SD2.1` / `SDXL` / `DE3`)** | `0.9970` / `0.9991` / `0.9995` | `0.9904` / `0.9983` / `0.9991` | `0.9650` / `0.9771` / `0.9961` | Cả 3 nhánh đều nhận diện rất mạnh trên `DALL-E 3` & `SDXL` |
 
 > [!IMPORTANT]
-> Kết quả trên xác nhận **Nhánh Spatial** và **Nhánh Spectral** đều đã hội tụ xuất sắc và sẵn sàng để trích xuất vector đặc trưng (`1280-D` và `256-D`) kết hợp cùng **Nhánh Semantic (`CLIP.py`, `512-D`)** ở các bước tiếp theo. Đánh giá cuối cùng trên tập **Test (43,800 ảnh gồm Known + Unseen `SD 3` & `Midjourney V6`)** sẽ được thực hiện sau khi hoàn tất toàn hệ thống.
+> Kết quả trên xác nhận **cả 3 nhánh độc lập (Spatial, Semantic, Spectral)** đều đã hoàn thiện và đạt độ chính xác rất cao trên Validation Known (`0.9794` – `0.9985` AUC). Bước tiếp theo là huấn luyện **Fusion MLP (`2048-D -> 512 -> 128 -> 1`)**, **Branch Dropout (`p=0.15`)**, **7 tổ hợp Ablation**, và đánh giá toàn diện trên tập **Test (43,800 ảnh gồm Known + Unseen `SD 3` & `Midjourney V6` + 4 mức nén JPEG)**.
+
+---
+
+## 13. Ghi chú Lý thuyết & Phương pháp Thực nghiệm Stage 2 (Phục vụ viết Chương 3 & Chương 4)
+
+### 13.1. Phân biệt Đầu Tuyến tính 1 lớp (`Linear`) và Mạng Đa tầng Phi tuyến (`MLP`)
+
+| Khía cạnh | Tuyến tính 1 lớp (`LinearProbeHead`) | Mạng Đa tầng Phi tuyến (`FusionMLP`) |
+| :--- | :--- | :--- |
+| **Cấu trúc toán học** | $\hat{y} = w^\top x + b$ (`Linear(D, 1)`). Chỉ 1 phép nhân ma trận, không có tầng ẩn hay hàm kích hoạt. | `LayerNorm(D) -> Linear(D, 512) -> GELU -> Dropout(0.3) -> Linear(512, 128) -> GELU -> Dropout(0.2) -> Linear(128, 1)`. |
+| **Hình học ranh giới** | Chỉ cắt được không gian đặc trưng bằng **1 siêu phẳng (đường thẳng/mặt phẳng phẳng lì)**. | Nhờ hàm kích hoạt phi tuyến `GELU` giữa 2 tầng ẩn `512` và `128`, mạng uốn cong được ranh giới phân tách phức tạp. |
+| **Tương tác chéo đặc trưng** | **Không học được** (từng chiều đặc trưng cộng tuyến tính độc lập). | **Học được tốt** các điều kiện phối hợp giữa các chiều và giữa các nhánh (ví dụ: kết hợp tín hiệu không gian với tần số, hoặc bù trừ khi ảnh bị nén JPEG). |
+| **Lý do áp dụng trong đồ án** | Dùng cho **Nhánh Semantic (`CLIP`, 513 tham số)**: đặc trưng CLIP ViT-B/16 (pretrain 400M ảnh) vốn đã phân tách tốt; ít tham số giúp tránh overfit vào 3 generator Known và tổng quát hóa sang Unseen tốt hơn (UnivFD, CVPR 2023). | Dùng cho **Fusion 3 nhánh (`2048 -> 512 -> 128 -> 1`, 1,118,977 tham số)**: cần tầng ẩn phi tuyến để học tương tác chéo giữa 3 miền thông tin khác bản chất (`Spatial 1280-D` + `Semantic 512-D` + `Spectral 256-D`). |
+
+*(Ghi chú: Nếu xếp nhiều lớp `Linear` liên tiếp mà không có `GELU` ở giữa thì tích các ma trận vẫn suy biến thành một phép biến đổi tuyến tính duy nhất; chính hàm `GELU` và tầng ẩn mới tạo ra năng lực học phi tuyến của MLP.)*
+
+### 13.2. Vì sao Đánh giá Stage 2 tách riêng Nhóm 1 (3 đơn nhánh gốc) và Nhóm 3 (7 tổ hợp Ablation qua MLP)?
+
+Trong bảng đánh giá tổng hợp gồm 12 mô hình (`3` đơn nhánh gốc + `2` Fusion 3 nhánh + `7` tổ hợp Ablation), việc vẫn giữ 3 cấu hình đơn nhánh chạy qua MLP ở Nhóm 3 dù Nhóm 1 đã chấm điểm từng nhánh nhằm đảm bảo nguyên tắc **cô lập biến (Controlled Variable)** trong nghiên cứu thực nghiệm:
+
+1. **Khác nhau về kiến trúc head & số tham số:**
+   - **Nhóm 1 (Đơn nhánh gốc — Tuyến tính 1 lớp):** `spatial_branch_head` (`1,281` tham số), `semantic_probe` (`513` tham số), `spectral_branch_head` (`257` tham số). Với Spatial và Spectral, head được học đồng thời khi fine-tune/train backbone ở Stage 1.
+   - **Nhóm 3 (3 bản đơn nhánh trong Ablation — Đầu MLP phi tuyến):** `ablation_spatial` (`724,225` tham số), `ablation_semantic` (`329,473` tham số), `ablation_spectral` (`197,889` tham số). Cả 7 tổ hợp đều train độc lập trên **cùng Feature Cache đóng băng**, cùng kiến trúc đầu `LayerNorm -> D_in -> 512 -> GELU -> 128 -> GELU -> 1` (`branch_dropout_p = 0.0`), cùng `AdamW(lr=5e-4)`, `30 epochs`, `seed=42`.
+2. **Tránh ngụy biện so sánh lệch đầu phân loại:**
+   - Nếu không có `ablation_semantic` (`512 -> 512 -> 128 -> 1`) mà chỉ đem `FusionMLP` (`2048 -> 512 -> 128 -> 1`) so với `semantic_probe` (`512 -> 1`), không thể phân biệt mức cải thiện đến từ **việc ghép thêm nhánh** hay chỉ do **nâng cấp đầu phân loại từ Linear lên MLP nhiều tham số hơn**.
+   - Nhờ đặt đủ `1 nhánh` $\to$ `2 nhánh` $\to$ `3 nhánh` trên **cùng một khuôn MLP**, mọi chênh lệch hiệu năng đo được phản ánh trung thực **đóng góp thuần túy từ sự bổ trợ đa miền (Spatial + Semantic + Spectral)**.
+3. **Phân định vai trò khi trích dẫn số liệu vào Chương 4:**
+   - **Nhóm 1:** Báo cáo hiệu năng chính thức của **3 mô hình đơn nhánh độc lập** (`best_spatial.pth`, `best_semantic.pth`, `best_spectral.pth`).
+   - **Nhóm 2 & Nhóm 3:** Đối chứng công bằng hiệu quả ghép nhánh trong **Ablation Study (`7` tổ hợp)** và biến thể **Branch Dropout (`p = 0.15`)** so với **Fusion Baseline (`p = 0.0`)**.
+
+---
+
+## 14. Bảng thông số kỹ thuật chi tiết phục vụ báo cáo: Stage 2 — Feature Caching, FusionMLP Baseline (`p=0.0`) & Branch Dropout (`p=0.15`)
+
+> [!NOTE]
+> Mục này ghi lại toàn bộ thông số kiến trúc, chiến lược tối ưu hóa và kết quả thực nghiệm chính thức trên tập **Validation Known (5,836 ảnh)** của **Stage 2 (`Fusion_mlp.py` + `train_fusion.py`)** hoàn thành ngày 17/11/2026 trên RTX 3050 Laptop GPU. Dùng làm số liệu chuẩn trích dẫn vào Chương 3 và Chương 4 của Đồ án tốt nghiệp.
+
+### 14.1. Lưu đệm Đặc trưng (Feature Caching — Clean Splits)
+Cả 3 backbone (`SpatialBranch`, `SemanticBranch`, `SpectralBranch`) được đóng băng hoàn toàn ở chế độ `.eval()`, trích xuất đặc trưng một lần bằng `extract_features.py` dưới AMP `torch.bfloat16` rồi ép về `torch.float32` lưu vào `code/system/checkpoints/feature_cache/`:
+
+| Split | Số mẫu ($N$) | Bản lật (`Flip`) | Spatial (`1280-D`) | Semantic (`512-D`, L2=1) | Spectral (`256-D`) | `manifest_hash` (12 ký tự đầu) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **`train` (Known)** | `27,812` (`6,953` Real + `20,859` AI) | Có (`Orig + Flip`) | `274.27 MB` | `111.31 MB` | `56.99 MB` | `db6e8d5e2a9a...` |
+| **`val` (Known)** | `5,836` (`1,459` Real + `4,377` AI) | Không | `29.09 MB` | `11.99 MB` | `6.29 MB` | `d0b596c04415...` |
+| **`test` (Known + Unseen)** | `43,800` (`7,300` Real + `36,500` AI) | Không | `218.08 MB` | `89.76 MB` | `46.98 MB` | `ebf13cb34983...` |
+
+* **Đồng bộ góc nhìn và căn chỉnh mẫu:** Mỗi batch ghép nối được kiểm định 100% trùng khớp `manifest_hash`, `sample_idx`, `filepaths`, `label_a` và `group_id`. Khi huấn luyện `flip_prob = 0.5`, cả 3 nhánh sử dụng chung một mảng quyết định `_epoch_flip_decisions` cho từng mẫu mỗi epoch để tránh lệch pha góc nhìn giữa các nhánh.
+
+### 14.2. Kiến trúc `FusionMLP` & Phân bổ Tham số (`2048 -> 512 -> 128 -> 1`)
+* **Chuẩn hóa riêng từng nhánh (`branch_norms`):** Cân bằng thang đo giữa đặc trưng CLIP L2-normalized ($\sim \pm 0.04$) với EfficientNet và Spectral CNN:
+  - `branch_norms.spatial`: `LayerNorm(1280, eps=1e-5)` $\to$ **`2,560` tham số**
+  - `branch_norms.semantic`: `LayerNorm(512, eps=1e-5)` $\to$ **`1,024` tham số**
+  - `branch_norms.spectral`: `LayerNorm(256, eps=1e-5)` $\to$ **`512` tham số**
+* **Mạng trích xuất đặc trưng hợp nhất (`feature_mlp`):**
+  - `Linear(2048 -> 512) + GELU + Dropout(0.3)`: **`1,049,088` tham số**
+  - `Linear(512 -> 128) + GELU + Dropout(0.2)`: **`65,664` tham số**
+* **Đầu phân loại (`classifier`):** `Linear(128 -> 1, bias=True)` $\to$ **`129` tham số**
+* **TỔNG SỐ THAM SỐ HỌC ĐƯỢC (`FusionMLP` 3 nhánh):** **`1,118,977` tham số**.
+* **Cấu hình Tối ưu hóa & Lịch trình LR:**
+  - `AdamW` ($\text{lr} = 5.0 \times 10^{-4}$), tách 2 nhóm tham số: **`1,114,240` tham số** ma trận trọng số 2D (`weight_decay = 1.0e-4`) và **`4,737` tham số** `LayerNorm` & `bias` (`weight_decay = 0.0`).
+  - Lịch trình `SequentialLR`: `1` epoch `LinearLR` warmup ($5.0 \times 10^{-5} \to 5.0 \times 10^{-4}$) + `29` epochs `CosineAnnealingLR` ($T_{\max}=29$).
+  - Gradient clipping `max_norm = 1.0`, `batch_size = 32` (`16` Real : `16` AI qua `BalancedGroupSampler` trên `13,906` mẫu/epoch), `EarlyStopping(patience=6, min_delta=1e-4)` theo Val Known AUC, `seed = 42`, AMP `torch.bfloat16`.
+
+---
+
+### 14.3. Kết quả Huấn luyện `FusionMLP Baseline (p=0.0)`
+* **Thông tin phiên chạy:** `run_id = fusion_baseline_1794883760_71edf8` | Thư mục: `code/system/checkpoints/stage2/fusion_baseline/` | Dừng sớm ở Epoch 17 (chạy `18` epochs `0..17` trong **`108.02 giây`** $\approx 1.8$ phút) | Checkpoint tốt nhất: **`best_fusion.pth` (Epoch 11)**.
+
+#### Diễn biến huấn luyện qua các mốc tiêu biểu:
+| Epoch | LR | Train Loss | Train AUC | Val Loss | Val AUC | Val Bal-ACC | SD 2.1 AUC | SDXL AUC | DALL-E 3 AUC | Ghi chú |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **00** | `5.00e-5` | `0.0373` | `0.9992` | **`0.0305`** | `0.9993` | `98.74%` | `0.9986` | `0.9996` | `0.9998` | Warmup đã đạt AUC `0.9993` |
+| **01** | `5.00e-4` | `0.0211` | `0.9997` | `0.0471` | `0.9995` | `98.94%` | `0.9987` | `0.9998` | `0.9999` | Tiếp tục tăng AUC |
+| **05** | `4.77e-4` | `0.0071` | `1.0000` | `0.0322` | `0.9997` | `98.94%` | `0.9994` | `0.9999` | `0.9999` | Tiệm cận mức bão hòa |
+| **11** | **`3.67e-4`** | **`0.0015`** | **`1.0000`** | `0.0464` | **`0.9997`** | **`99.26%`** | **`0.9994`** | **`0.9999`** | **`1.0000`** | **★ Lưu `best_fusion.pth`** |
+| **17** | `2.10e-4` | `0.0009` | `1.0000` | `0.0633` | `0.9997` | `99.21%` | `0.9994` | `0.9999` | `0.9999` | Kích hoạt EarlyStopping (`patience=6`) |
+
+#### Độ chính xác trên Validation Known (`1,459` Real vs `4,377` AI) tại `best_fusion.pth` (Epoch 11):
+* **Chỉ số tổng thể (Overall):**
+  - **ROC-AUC:** **`0.9997`** (`0.999749`) | **AP (PR-AUC):** **`0.9999`** (`0.999915`) | **Val BCE Loss:** **`0.0464`**
+  - **Balanced Accuracy:** **`99.26%`** | **Accuracy:** **`99.50%`** | **F1-Score:** **`0.9967`**
+  - **Precision:** **`99.59%`** | **Recall:** **`99.75%`** | **FPR:** **`1.23%`**
+  - **Ma trận nhầm lẫn:** `TP = 4,366` | `FP = 18` | `TN = 1,441` | `FN = 11` (chỉ sai tổng cộng `29 / 5,836` ảnh)
+  - **Phân tách xác suất trung bình:** $P(\text{AI}|\text{Real}) = \mathbf{0.0123}$ vs. $P(\text{AI}|\text{AI}) = \mathbf{0.9974}$
+* **Chi tiết theo từng Generator (Cặp 1:1 với 1,459 ảnh Real `MS_COCO`):**
+  | Generator (Known) | AUC | Balanced ACC | AP | F1 | Recall | FPR | $P(\text{AI}|\text{AI})$ | TP / FN |
+  | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+  | `Stable_Diffusion_2.1` | `0.9994` | `99.07%` | `0.9994` | `0.9908` | `99.38%` | `1.23%` | `0.9941` | `1,450 / 9` |
+  | `Stable_Diffusion_XL` | `0.9999` | `99.31%` | `0.9999` | `0.9932` | `99.86%` | `1.23%` | `0.9984` | `1,457 / 2` |
+  | `DALL-E_3` | `1.0000` | `99.38%` | `1.0000` | `0.9939` | `100.00%` | `1.23%` | `0.9996` | `1,459 / 0` |
+  | **Macro-Avg Known (3 models)** | **`0.9997`** | **`99.26%`** | **`0.9997`** | **`0.9926`** | **`99.75%`** | **`1.23%`** | — | — |
+
+---
+
+### 14.4. Kết quả Huấn luyện Biến thể `Branch Dropout (p=0.15)`
+* **Cơ chế đặc thù:** Khi `.train()`, mỗi nhánh có xác suất rơi `p = 0.15` nhưng luôn giữ tối thiểu `min_active_branches = 2` nhánh hoạt động; các nhánh giữ lại được chia bù cho xác suất biên $q = P(\text{giữ})$ để bảo toàn kỳ vọng toán học giữa `.train()` và `.eval()`. Khi `.eval()`, mở nguyên 100% cả 3 nhánh.
+* **Thông tin phiên chạy:** `run_id = branch_dropout_1794885670_3a087e` | Thư mục: `code/system/checkpoints/stage2/branch_dropout/` | Dừng sớm ở Epoch 13 (chạy `14` epochs `0..13` trong **`96.17 giây`** $\approx 1.6$ phút) | Checkpoint tốt nhất: **`best_fusion_dropout.pth` (Epoch 7)**.
+
+#### Diễn biến huấn luyện qua các mốc tiêu biểu:
+| Epoch | LR | Train Loss | Train AUC | Val Loss | Val AUC | Val Bal-ACC | SD 2.1 AUC | SDXL AUC | DALL-E 3 AUC | Ghi chú |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **00** | `5.00e-5` | `0.0567` | `0.9980` | **`0.0280`** | `0.9994` | `98.85%` | `0.9988` | `0.9996` | `0.9998` | Hội tụ nhanh ngay từ warmup |
+| **03** | `4.94e-4` | `0.0146` | `0.9999` | `0.0313` | `0.9996` | `99.11%` | `0.9991` | `0.9998` | `0.9999` | Val Bal-ACC vượt `99.1%` |
+| **07** | **`4.49e-4`** | **`0.0076`** | **`1.0000`** | `0.0318` | **`0.9997`** | **`99.29%`** | **`0.9993`** | **`0.9998`** | **`0.9999`** | **★ Lưu `best_fusion_dropout.pth`** |
+| **13** | `3.17e-4` | `0.0059` | `1.0000` | `0.0359` | `0.9997` | `99.13%` | `0.9994` | `0.9999` | `0.9999` | Kích hoạt EarlyStopping (`patience=6`) |
+
+#### Độ chính xác trên Validation Known (`1,459` Real vs `4,377` AI) tại `best_fusion_dropout.pth` (Epoch 7):
+* **Chỉ số tổng thể (Overall):**
+  - **ROC-AUC:** **`0.9997`** (`0.999672`) | **AP (PR-AUC):** **`0.9999`** (`0.999889`) | **Val BCE Loss:** **`0.0318`**
+  - **Balanced Accuracy:** **`99.29%`** | **Accuracy:** **`99.38%`** | **F1-Score:** **`0.9959`**
+  - **Precision:** **`99.70%`** | **Recall:** **`99.47%`** | **FPR:** **`0.89%`**
+  - **Ma trận nhầm lẫn:** `TP = 4,354` | `FP = 13` | `TN = 1,446` | `FN = 23`
+  - **Phân tách xác suất trung bình:** $P(\text{AI}|\text{Real}) = \mathbf{0.0099}$ vs. $P(\text{AI}|\text{AI}) = \mathbf{0.9945}$
+* **Chi tiết theo từng Generator (Cặp 1:1 với 1,459 ảnh Real `MS_COCO`):**
+  | Generator (Known) | AUC | Balanced ACC | AP | F1 | Recall | FPR | $P(\text{AI}|\text{AI})$ | TP / FN |
+  | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+  | `Stable_Diffusion_2.1` | `0.9993` | `99.04%` | `0.9992` | `0.9904` | `98.97%` | `0.89%` | `0.9892` | `1,444 / 15` |
+  | `Stable_Diffusion_XL` | `0.9998` | `99.35%` | `0.9998` | `0.9935` | `99.59%` | `0.89%` | `0.9961` | `1,453 / 6` |
+  | `DALL-E_3` | `0.9999` | `99.49%` | `0.9999` | `0.9949` | `99.86%` | `0.89%` | `0.9982` | `1,457 / 2` |
+  | **Macro-Avg Known (3 models)** | **`0.9997`** | **`99.29%`** | **`0.9997`** | **`0.9929`** | **`99.47%`** | **`0.89%`** | — | — |
+
+---
+
+### 14.5. Đối chiếu bước đầu giữa `Fusion Baseline (p=0.0)` và `Branch Dropout (p=0.15)` trên Validation Known
+
+| Tiêu chí so sánh | `FusionMLP Baseline (p=0.0)` | `Branch Dropout (p=0.15)` | Nhận xét sơ bộ trên Val Known |
+| :--- | :---: | :---: | :--- |
+| **Epoch tốt nhất / Thời gian** | Epoch `11` (`108.02` s) | Epoch `7` (`96.17` s) | Cả 2 hội tụ rất nhanh dưới 2 phút |
+| **Val ROC-AUC (Overall)** | **`0.9997`** (`0.999749`) | `0.9997` (`0.999672`) | Gần như ngang nhau, vượt xa 3 nhánh đơn |
+| **Val BCE Loss** | `0.0464` | **`0.0318`** | `Branch Dropout` cho xác suất hiệu chuẩn mượt hơn (loss thấp hơn) |
+| **Val Balanced Accuracy** | `99.26%` | **`99.29%`** | `Branch Dropout` nhỉnh hơn `+0.03%` |
+| **FPR (Báo nhầm ảnh thật Real)** | `1.23%` (`18/1,459`) | **`0.89%`** (`13/1,459`) | `Branch Dropout` giảm báo động giả trên ảnh Real |
+| **Recall (Bắt ảnh AI Known)** | **`99.75%`** (`4,366/4,377`) | `99.47%` (`4,354/4,377`) | `Baseline` bắt AI trên `DALL-E 3` tuyệt đối (`100.00%`) |
+
+> [!NOTE]
+> Cả hai mô hình đều đạt hiệu năng xuất sắc trên tập Validation Known (`~0.9997` AUC, `>99.25%` Balanced Accuracy). Kết luận cuối cùng về việc **Branch Dropout có cải thiện khả năng tổng quát hóa sang Unseen (`SD 3`, `Midjourney V6`) và JPEG Robustness hay không** sẽ được xác định sau khi chạy xong **7 tổ hợp Ablation**, trích xuất **Test JPEG** và chấm điểm đồng bộ **12/12 mô hình** trên tập **Test (43,800 ảnh)**.
+
+---
+
+## 15. Cấu trúc Thư mục Lưu trữ Hiện vật Thực nghiệm (`code/system/checkpoints/`)
+
+Thư mục `code/system/checkpoints/` lưu trữ toàn bộ trọng số mô hình, bộ đệm đặc trưng (Feature Cache), nhật ký huấn luyện và các tệp kết quả đánh giá cuối kỳ của đồ án:
+
+```text
+checkpoints/
+├── spatial_baseline/      # Stage 1: Nhánh Không gian (EfficientNet-B0)
+├── spectral_baseline/     # Stage 1: Nhánh Phổ tần số (Residual Spectral CNN)
+├── semantic_baseline/     # Bản sao chuẩn hóa của nhánh Semantic (Linear Probe)
+├── feature_cache/         # Kho đặc trưng .pt trích xuất sẵn & bảng đối chiếu CSV
+└── stage2/                # Toàn bộ mô hình Stage 2 (Probe, Fusion, Dropout, Ablation) & Evaluation
+```
+
+### 15.1. Nhóm Stage 1 & Đơn nhánh Baseline
+* **`spatial_baseline/` (EfficientNet-B0, ~4.01M tham số):**
+  - `best_spatial.pth` (~48.6 MB): Trọng số tốt nhất (Epoch 15) chọn theo Val AUC, kèm trạng thái Optimizer/Scheduler/EarlyStopping/RNG, cấu hình và metrics.
+  - `last_spatial.pth` (~48.6 MB): Trọng số tại epoch cuối cùng để phục vụ khôi phục (`--resume`).
+  - `history_spatial.json`: Nhật ký chi tiết từng epoch (Loss, AUC, Balanced Accuracy, chỉ số riêng theo `SD 2.1`, `SDXL`, `DALL-E 3`, learning rate).
+* **`spectral_baseline/` (Residual Spectral CNN, ~5.32M tham số):**
+  - `best_spectral.pth` (~64.0 MB): Trọng số tốt nhất (Epoch 29).
+  - `last_spectral.pth` (~64.0 MB): Trọng số epoch cuối phục vụ resume.
+  - `history_spectral.json`: Nhật ký chi tiết 30 epochs huấn luyện.
+* **`semantic_baseline/` (OpenAI CLIP ViT-B/16 Linear Probe):**
+  - `best_semantic.pth` (~38.7 KB): Do backbone CLIP (`86.19M` tham số) đóng băng 100%, checkpoint chỉ lưu **513 tham số** của lớp `Linear(512 -> 1)` (`classifier.1.weight`, `classifier.1.bias`). Đây là bản sao đồng bộ từ `stage2/semantic_probe/best_semantic.pth` để đặt ngang hàng phục vụ suy luận và đánh giá.
+
+### 15.2. `feature_cache/` — Kho Đệm Đặc trưng (`21` file `.pt` + `7` file `.csv`)
+Đầu ra từ `extract_features.py` (chạy 3 backbone đóng băng một lượt rồi lưu tensor `float32`):
+* **9 file Clean (`.pt`):** `{spatial|semantic|spectral}_{train|val|test}.pt` — lưu tensor đặc trưng (`1280-D`, `512-D` chuẩn L2, `256-D`), kèm `flip_features` (chỉ có ở `train` 27,812 ảnh), `sample_idx`, `filepaths`, `label_a`, `label_b`, `group_id`, `model_names`, `manifest_hash`, và `extraction_signature`.
+* **12 file Test JPEG (`.pt`):** `{spatial|semantic|spectral}_test_jpeg{90|70|50|30}.pt` — đặc trưng của `43,800` ảnh Test sau khi nén JPEG thực tế ở 4 mức chất lượng `Q = 90, 70, 50, 30`.
+* **`manifests/` (7 file `.csv`):** `train_manifest.csv`, `val_manifest.csv`, `test_manifest.csv`, và 4 file `test_jpeg{90,70,50,30}_manifest.csv` — bảng chỉ mục văn bản để kiểm chứng khớp 100% thứ tự mẫu giữa 3 nhánh.
+
+### 15.3. `stage2/` — Các mô hình Hợp nhất, Ablation & Kết quả Đánh giá Cuối kỳ
+* **Cấu trúc chuẩn 5 file trong từng thư mục con (`semantic_probe/`, `fusion_baseline/`, `branch_dropout/`, và 7 thư mục trong `ablation/`):**
+  1. `best_*.pth`: Checkpoint tại epoch có Val Known AUC tốt nhất (`best_fusion.pth` ở Epoch 11, `best_fusion_dropout.pth` ở Epoch 7, và 7 checkpoint `best_<slug>.pth` trong `ablation/`).
+  2. `last_*.pth`: Checkpoint epoch cuối cùng phục vụ `--resume`.
+  3. `config.json`: Siêu tham số kiến trúc, optimizer/scheduler, `manifest_hash`, `best_epoch`, `best_val_auc`, thời gian chạy.
+  4. `history.csv`: Bảng log phẳng theo từng epoch (tiện mở Excel hoặc vẽ biểu đồ hội tụ).
+  5. `history_*.json`: Nhật ký đầy đủ gồm cả metrics tổng thể và `val_per_generator` qua từng epoch.
+* **`ablation/` gồm đủ 7 tổ hợp chạy qua `FusionMLP` (`p=0.0`):** `spatial/`, `semantic/`, `spectral/`, `spatial_semantic/`, `spatial_spectral/`, `semantic_spectral/`, và `all_branches/`.
+* **`evaluation/` — 4 tệp Báo cáo Kết quả Cuối kỳ (`train_fusion.py --mode eval --strict-eval`):**
+  - `ablation_comparison.csv`: Bảng tổng hợp 12 mô hình (3 đơn nhánh gốc + 2 Fusion + 7 Ablation) gồm Val, Test Known, Test Unseen, Test All và AUC từng generator (`SD 2.1`, `SDXL`, `DALL-E 3`, `SD 3`, `Midjourney V6`).
+  - `clean_test.json`: Đầy đủ metrics (AUC, Bal-ACC, AP, ACC, F1, Precision, Recall, FPR, TP/FP/TN/FN, xác suất trung bình) trên Clean Test cho cả 12 mô hình.
+  - `per_generator.json`: Kết quả từng cặp 1:1 giữa 7,300 ảnh Real `MS_COCO` với từng generator AI cùng Macro-Avg Known / Unseen / All.
+  - `jpeg_robustness.json`: Kết quả và độ suy giảm ($\Delta \text{AUC}$, $\Delta \text{Bal-ACC}$) của cả 12 mô hình qua 4 mức nén JPEG `Q = 90, 70, 50, 30`.
+
+---
+
+## 16. Chẩn đoán Lỗ hổng Hệ thống Baseline & Lộ trình Cải tiến Nghiên cứu Tiếp theo
+
+> [!NOTE]
+> Mục này ghi chép toàn bộ kết quả phân tích lỗi thực nghiệm trên hệ thống **Baseline 3 nhánh + FusionMLP** (sau khi hoàn tất đánh giá 43,800 ảnh Test Clean & 4 mức JPEG `90, 70, 50, 30` ngày 17–18/11/2026) cùng tham chiếu từ các công trình quốc tế (2020–2026). Tài liệu dùng làm cơ sở báo cáo **Hạn chế mô hình (Chương 4)** và **Kế hoạch cải tiến tiếp theo** sau khi thông qua báo cáo tiến độ Baseline.
+
+---
+
+### 16.1. Đặc tả Vật lý Bộ dữ liệu `Defactify` & Lý giải Sai lệch Miền Thực tế (`MS_COCO` vs. Smartphone & Ảnh AI 2026)
+
+#### 1. Đặc điểm vật lý của `Defactify_Image_Dataset` (MS_COCOAI — AAAI Defactify 4 Workshop)
+Kiểm tra trực tiếp `metadata.csv` (94,272 dòng sạch) và tệp ảnh vật lý trên 3 phân tập `train / val / test`:
+* **Cấu trúc nhóm & Quy trình sinh ảnh:** Mỗi `group_id` gồm 1 ảnh thật `MS_COCO` và 5 ảnh AI sinh từ cùng câu `caption` ngắn mô tả cảnh vật đời thường (VD: *"Two tall giraffe standing next to each other on a field"*). Bộ dữ liệu **không chứa** prompt yêu cầu vẽ văn bản dài, bảng giá hay poster đồ họa phẳng.
+* **Kích thước, dung lượng và bảng lượng tử hóa JPEG (`quantization`) thực tế:**
+
+| Nguồn ảnh | Kích thước khung hình (`W x H`) | Dung lượng TB (Train / Val / Test) | Bảng lượng tử JPEG (`qt[0][0]`) | Đặc điểm cảm biến / Nguồn gốc |
+| :--- | :---: | :---: | :---: | :--- |
+| **`MS_COCO` (Real)** | Đa dạng chữ nhật (`640x480`, `500x375`, `640x427`...; 44 ảnh `<224px`) | `95.0` / `94.5` / `54.7 KB` | `2` | Máy ảnh DSLR / phổ thông thập niên 2010–2014, giữ nhiễu hạt tự nhiên, không xử lý AI/HDR |
+| **`Stable_Diffusion_2.1`** | `768 x 768` | `154.2` / `171.1` / `127.6 KB` | `2` | Latent Diffusion thế hệ 2.1 (Known) |
+| **`Stable_Diffusion_XL`** | `1024 x 1024` | `195.1` / `196.6` / `159.5 KB` | `2` | SDXL 1.0 độ phân giải cao (Known) |
+| **`DALL-E 3`** | `270 x 270` | `31.6` / `33.2` / `21.8 KB` | `2` | Ảnh đã bị thu nhỏ cố định về `270x270` (Known) |
+| **`Stable_Diffusion_3`** | `1024 x 1024` | `251.7` / `283.5` / `194.0 KB` | `2` | Kiến trúc DiT + VAE mới (Unseen) |
+| **`Midjourney_V6`** | `436 x 436` | `44.6` / `45.3` / `35.2 KB` | `2` | Mô hình thương mại Unseen (`436x436`) |
+
+#### 2. Phân tích 3 hiện tượng lệch miền khi kiểm thử ảnh thực tế
+1. **Khoảng cách thế hệ bộ sinh (*Generator Shift*):** Hệ thống chỉ huấn luyện trên 3 bộ sinh Known (`SD 2.1`, `SDXL`, `DALL-E 3`). Khi kiểm định sang kiến trúc mới (`Stable_Diffusion_3`, `Midjourney_V6`) hoặc các mô hình thương mại 2025–2026 (ChatGPT/Gemini), nhánh fine-tune toàn phần **Spatial (`EfficientNet-B0`)** sụt giảm mạnh nhất: `Val Known AUC = 0.9985` $\to$ `Test Known AUC = 0.9551` $\to$ `Test Unseen AUC = 0.9224` (`SD 3 Recall = 53.36%`).
+2. **Lệch miền ảnh Thật (*Real Sensor / ISP Domain Shift* — `MS_COCO` vs. Camera trước iPhone XS):**
+   - Bức ảnh tự chụp chân dung bằng camera trước iPhone XS gửi qua WhatsApp (`thinh.jpeg`, `960x1280`, nén xuống `106 KB`) bị **CLIP** báo nhầm `85.75% AI` (`logit = +1.795`) và **FFT** báo nhầm `99.51% AI` (`logit = +5.322`), kéo **Fusion Baseline** lên `99.84% AI`.
+   - Nguyên nhân kép: (i) Thuật toán *Computational Photography* (Smart HDR + khử nhiễu đa khung hình làm mịn da) của iPhone XS tạo bề mặt mượt khác hẳn ảnh `MS_COCO` thập niên 2010, gây lệch ngữ nghĩa/phong cách ở CLIP; (ii) Nén mạnh qua WhatsApp tạo lưới khối JPEG $8 \times 8$ đánh lừa nhánh FFT. Riêng **`Fusion Dropout (p=0.15)`** (và `Spatial`) giữ đúng kết luận **REAL (`91.50% THẬT`, `logit = -2.376`)**.
+3. **Khả năng nhận diện ảnh AI thế hệ 2026:**
+   - Với ảnh AI bối cảnh tự nhiên/con người ngoài trời (`Sửa Xe 11.02.04.jpeg`): `Fusion Baseline` nhận diện đúng **`96.36% AI`** (`Spatial = 86.39%`, `CLIP = 85.05%`).
+   - Dễ thất bại khi ảnh AI 2026 là **đồ họa chữ phẳng / poster** (nằm ngoài phân phối caption `MS_COCO` và rơi vào điểm mù cắt tâm) hoặc bị **nén nặng qua mạng xã hội**.
+
+---
+
+### 16.2. Nhóm Bất cập từ Chiến lược Cắt Cục bộ 1 Ô Tâm (`view_native` $224 \times 224$)
+
+1. **Điểm mù Center-Crop (*Center-Crop Blind Spot*):**
+   - Cả **Spatial** lẫn **Spectral** chỉ quan sát đúng 1 ô `224 x 224` ở tâm ảnh. Khi tâm rơi vào nền trắng/chữ phẳng (`10.53.10.jpeg`, `222.jpeg`), vùng đồng màu tần số thấp (trời xanh, tường trắng), hoặc tán lá đồng nhất (`03272_SD3.jpg`), hai nhánh cục bộ mất manh mối bối cảnh (`Spatial` tụt còn `0.09% – 1.90%`).
+2. **Thực nghiệm kiểm chứng giải pháp vá Multi-Crop lúc suy luận (Thất bại khi không train lại):**
+   - **Trung bình đều 5-Crop (tâm + 4 góc):** Gây hiệu ứng **pha loãng tín hiệu**, các ô ít dấu vết kéo tụt ô bắt đúng (`03845_SD3` rớt xuống `~20%` ở cả Spatial và FFT).
+   - **Smart Multi-Crop Top-3 Texture lúc suy luận:** Kết quả thực nghiệm trên 5 ảnh thử chứng minh **phản tác dụng** khi áp dụng lên mô hình vốn train bằng 1 center-crop (`11.02.04.jpeg` Spatial rớt `86.39% -> 0.34%`; `222.jpeg` FFT rớt `97.91% -> 36.94%`; `03845_SD3` FFT rớt `93.55% -> 3.25%`) vì mô hình chưa được học phân phối cạnh chữ/rìa theo kiểu *PatchCraft*.
+
+---
+
+### 16.3. Kiểm chứng Toán học Hiện tượng *Overconfidence*, *Spatial Dominance* & *Threshold Shift* (43,800 ảnh Clean Test)
+
+Thống kê trực tiếp toàn bộ **43,800 vector Logit & Xác suất** trên tập Test Clean bóc trần 3 hiện tượng cốt lõi bên trong mạng:
+
+#### 1. Phân phối Logit ($z$) & Xác suất ($P = \sigma(z)$) thực tế trên Clean Test:
+
+| Mô hình | Nhóm dữ liệu (`N`) | Mean Logit | Mean $P(\text{AI})$ | Median $P(\text{AI})$ | Rơi vào `P < 1%` | Rơi vào `1% ≤ P < 50%` | `P ≥ 50%` (Gán AI) |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **`semantic_probe`** (CLIP) | `Real MS_COCO` (`7,300`) | `-3.59` | `7.00%` | `2.50%` | `27.00%` | `70.90%` | `2.10%` (FPR) |
+| | `Unseen All` (`14,600`) | `+1.49` | `71.69%` | `82.79%` | `0.12%` | `22.64%` | **`77.24%`** |
+| **`fusion_baseline`** (`p=0.0`) | `Real MS_COCO` (`7,300`) | **`-39.82`** | `1.42%` | `0.00%` | **`97.88%`** | `0.74%` | `1.38%` (FPR) |
+| | `Known AI` (`21,900`) | `+23.07` | `84.68%` | `100.00%` | `12.07%` | `3.21%` | `84.72%` |
+| | `Unseen All` (`14,600`) | `+11.45` | `69.73%` | `100.00%` | **`25.01%`** | **`5.27%`** | **`69.72%`** |
+| **`fusion_dropout`** (`p=0.15`) | `Real MS_COCO` (`7,300`) | **`-26.13`** | `0.97%` | `0.00%` | **`98.01%`** | `1.07%` | **`0.92%`** (FPR) |
+| | `Known AI` (`21,900`) | `+12.52` | `82.57%` | `100.00%` | `11.36%` | `5.91%` | `82.74%` |
+| | `Unseen All` (`14,600`) | `+5.27` | `66.04%` | `99.82%` | **`23.36%`** | **`10.55%`** | **`66.09%`** |
+
+#### 2. Ba cơ chế sai lệch rút ra từ bảng phân phối trên:
+1. **Overconfidence (Quá tự tin cực đoan):** Do fine-tune 4.01M tham số trên Known, khi gặp ảnh lạ không mang vân pixel cũ, nhánh **Spatial** đẩy logit âm rất sâu (`-6.994` ở `03272_SD3`, `-10.258` ở `03845_SD3`, `-8.337` ở `thinh.jpeg`), khiến `Fusion` đẩy đám mây Real xuống tới mức trung bình **`-39.82`** (`Baseline`) và **`-26.13`** (`Dropout`).
+2. **Spatial Dominance (Lấn át đa nhánh) & Trade-off giữa 2 nhánh vs. 3 nhánh:**
+   - Khi ghép vào `FusionMLP`, lực âm cực đoan từ `1280-D` của Spatial đôi khi áp đảo hoàn toàn tín hiệu đúng từ CLIP & FFT: ca `03845_SD3` (`FFT=93.55%` vẫn bị kéo về `0.00%`), `03272_SD3` (`CLIP=94.03%`, `FFT=51.47%` vẫn bị kéo về `23.89%`), `10.48.26.jpeg` (`CLIP=75.82%` vẫn bị kéo về `0.00%`).
+   - Tuy nhiên, kết quả `clean_test.json` chứng minh **không thể loại bỏ Spatial**: tổ hợp 2 nhánh **`CLIP + FFT` (`ablation_semantic_spectral`)** tuy rất mạnh trên `SD 3` (`Recall = 83.48%`, `AUC = 0.9923`) nhưng lại **tụt thảm hại trên `Midjourney_V6` (`Recall` chỉ còn `55.96%`, bỏ lọt 44% ảnh MJ6)**; trong khi **`Fusion Baseline` (đủ 3 nhánh)** đạt **`MJ6 Recall = 71.38%`** (+15.42%) và **`MJ6 AUC = 0.9834` (cao nhất 12 mô hình)**.
+3. **Threshold Shift (Dịch ngưỡng phân phối — Nguyên nhân lớn nhất gây lọt ~30–34% ảnh Unseen):**
+   - Giải thích nghịch lý `Fusion Baseline / Dropout` có **`Unseen AUC` cao hơn `semantic_probe` (`0.9772 / 0.9794` > `0.9729`)** nhưng **`Unseen Bal-ACC@0.5` lại thấp hơn (`84.17% / 82.59%` < `87.58%`)**:
+   - Đám mây **Ảnh Thật** nằm sâu ở `Logit ∈ [-50, -18]` (Mean `-26.13` đến `-39.82`), trong khi nhóm **~23%–25% ảnh AI Unseen bị lọt** nằm ở `Logit ∈ [-15, 0)` (bị Sigmoid bóp thành `0.00%`), cộng thêm `5%–10%` nằm ở vùng `1%–49%`.
+   - Hai phân phối này **vẫn tách biệt nhau rất rõ** (giải thích vì sao `AUC ~ 0.98`), nhưng vì vạch cắt mặc định đặt tại **`Logit = 0.0` (`P = 50%`)**, toàn bộ vùng `Logit ∈ [-15, 0)` bị gán nhầm sang Real.
+   - **Kiểm chứng định lượng (Threshold Sensitivity trên `Fusion Dropout`):**
+     * `Logit >= 0.0` (`P >= 50%`): `FPR = 0.92%`, `Unseen Recall = 66.09%` $\implies$ **`Unseen Bal-ACC = 82.59%`** | `Known Bal-ACC = 90.91%`.
+     * `Logit >= -5.0`: `FPR = 2.07%`, `Unseen Recall = 77.51%` $\implies$ **`Unseen Bal-ACC = 87.72%`** | `Known Bal-ACC = 93.54%`.
+     * `Logit >= -12.0`: `FPR = 6.12%`, `Unseen Recall = 90.30%` $\implies$ **`Unseen Bal-ACC = 92.09%`** | `Known Bal-ACC = 94.98%`.
+     * `Logit >= -15.0`: `FPR = 9.59%`, `Unseen Recall = 94.47%` $\implies$ **`Unseen Bal-ACC = 92.44%`** | `Known Bal-ACC = 94.24%`.
+
+---
+
+### 16.4. Tác động Kép của Nén JPEG (`jpeg_prob = 0.0`) & Đánh giá Cơ chế Kết hợp Hiện tại
+
+1. **Tác động kép của nén JPEG (Chứng minh qua `jpeg_robustness.json`):**
+   - **Gây lọt ảnh AI bị nén (False Negative):** Khi chất lượng nén xuống `Q=50` và `Q=30`, `Spatial Unseen AUC` tụt từ `0.9224 -> 0.8382` (`Q=30`), `Spectral Unseen AUC` tụt từ `0.8836 -> 0.7909` (`Q=50`), kéo `Unseen Bal-ACC` của `Fusion Baseline` rớt từ `84.17%` $\to$ `72.53%` (`Q=50`) $\to$ `70.88%` (`Q=30`).
+   - **Gây báo nhầm ảnh Thật bị nén (False Positive ở FFT):** Lưới khối $8 \times 8$ JPEG tạo gai tuần hoàn giả trên phổ 2D FFT, làm tỷ lệ báo nhầm Real (**FPR**) của riêng nhánh **Spectral** nhảy vọt từ `13.26%` (Clean) lên **`15.52%` (`Q=50`)** và **`18.99%` (`Q=30`)**.
+   - **Khả năng khắc phục bằng `--jpeg-prob > 0.0`:** Tham số `--jpeg-prob` đã được cài đặt sẵn trong `dataset.py` và `train_branch.py`. Train lại `Spatial` và `Spectral` với `--jpeg-prob 0.5` sẽ giúp 2 backbone bền vững hơn với lưới $8\times 8$; để `FusionMLP` học trực tiếp phân phối nén ở Stage 2, cần trích xuất thêm cache train có nén JPEG để trộn huấn luyện.
+2. **Đánh giá các cơ chế kết hợp hiện tại:**
+   - **Late Fusion (Trung bình xác suất `1:1:1`):** Kém hiệu quả, dễ bị 1 nhánh sai kéo tụt dưới 50% (làm rớt `10.53.10`, `222`, `11.02.04` về `44%–49%`, trong khi `FusionMLP Baseline` cứu đúng cả 3 thành `96.36%–99.99%`).
+   - **Branch Dropout (`p=0.15`):** Giảm mạnh `FPR` (`0.92%` Clean, `0.25%` Q=50), cứu đúng ca ảnh thật nén WhatsApp `thinh.jpeg` (`91.50% REAL`), và **vượt `Fusion Baseline` về `Unseen AUC` ở cả Clean lẫn toàn bộ 4 mức JPEG (`Q=90, 70, 50, 30`; hơn hẳn `+0.0100` AUC tại `Q=50` và `Q=30`)**. Nhược điểm duy nhất là tính bảo thủ làm giảm thêm ~1.6% Recall nếu vẫn cắt cứng tại `P = 0.5`.
+
+---
+
+### 16.5. Kế hoạch Cải tiến Nghiên cứu Tiếp theo (Chuẩn Benchmark Khoa học & Tham chiếu Bài báo Quốc tế)
+
+> [!IMPORTANT]
+> Định hướng đồ án là **nghiên cứu khoa học**, không phải sản phẩm thương mại: mọi cải tiến thực nghiệm **tuyệt đối không trộn dữ liệu ngoài vào tập Train/Val của benchmark Defactify** (để giữ tính so sánh công bằng) và **tuyệt đối không dùng tập Test Unseen để tinh chỉnh ngưỡng** (*Zero Test Leakage*).
+
+Thứ tự ưu tiên các hạng mục triển khai sau khi hoàn tất báo cáo tiến độ Baseline:
+
+| Ưu tiên | Hạng mục cải tiến | Cơ sở khoa học & Bài báo tham chiếu | Giải pháp kỹ thuật dự kiến & Ghi chú thực nghiệm |
+| :---: | :--- | :--- | :--- |
+| **1** *(Rẻ nhất, Tác động Unseen cao nhất)* | **Chống *Spatial Dominance*, *Overconfidence* & *Threshold Shift* ngay tại Stage 2** *(chỉ chạy lại trên Feature Cache, mất vài phút)* | - **Yang et al. (AAAI 2026)**: *Your AI-Generated Image Detector Can Secretly Achieve SOTA Accuracy, If Calibrated*<br>- **CO-SPY (CVPR 2025)**: Adaptive Integration & Dynamic Regulators<br>- **FGINet (2026)**: Gated Injection chống Modality Dominance | 1. **Chống lấn át & làm mượt Logit trong `FusionMLP`:** Chuẩn hóa biên độ / thêm **Adaptive Branch Gating** (mạng cổng tự học trọng số `3` nhánh theo từng ảnh) kết hợp **Label Smoothing** ($\epsilon = 0.05$) để ngăn Logit vọt ra $\pm 40$.<br>2. **Post-hoc Calibration & Dịch ngưỡng hợp lệ:** Áp dụng *Temperature Scaling + Logit Offset Calibration* ước lượng tham số trên tập giả lập Unseen hoàn toàn hợp lệ (**Leave-One-Generator-Out trên Val Known + Val JPEG**), khóa cứng tham số rồi mới chấm trên Test. |
+| **2** *(Tăng bền vững JPEG/WhatsApp)* | **Huấn luyện đối chứng với JPEG Augmentation (`--jpeg-prob 0.5`)** | - **CNNDetection (Wang et al., CVPR 2020)**<br>- Các nghiên cứu *Compression OOD Robustness (CVPR 2024–2025)* | Dùng lại đúng codebase `train_branch.py` với `--jpeg-prob 0.5` trên tập Train Defactify gốc (mất ~2 giờ GPU) để tách biệt rõ tác động của nén JPEG lên từng nhánh (`Spatial`, `Spectral`, `Fusion`) và giảm `Spectral FPR` khi gặp ảnh nén mạng xã hội. |
+| **3** *(Phân tích học thuật Chương 4–5)* | **Lý giải *Sensor / ISP Domain Shift* trên dữ liệu ngoài** | - **B-Free (Guillaro, Verdoliva et al., CVPR 2025)**: *A Bias-Free Training Paradigm* | Không trộn ảnh ngoài vào benchmark chuẩn; sử dụng các ảnh thử ngoài thực tế (`thinh.jpeg` iPhone XS, ảnh menu 2026) làm **Case Study phân tích định tính** trong Chương 4 về giới hạn của `MS_COCO`. |
+| **4** *(Hướng phát triển Chương 5)* | **Nâng cấp kiến trúc Multi-Patch & Đa tầng Foundation Model** | - **PatchCraft (CVPR 2024)** (*Smash & Reconstruction* Rich/Poor Texture)<br>- **AIDE (ICLR 2025)** (*CLIP + DCT Extreme Patches*)<br>- **Effort (ICML 2025)** / **RINE (ECCV 2024)** | Đề xuất thay thế 1 Center-Crop bằng mạng chọn lọc vùng giàu kết cấu **ngay từ lúc Train**, hoặc khai thác đa tầng Transformer trung gian / không gian con trực giao SVD của CLIP để nâng trần `Unseen Accuracy` ở các phiên bản kế tiếp. |
+
+
+
+
 
 
