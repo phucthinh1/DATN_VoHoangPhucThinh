@@ -30,7 +30,8 @@ __pycache__/
 *.so
 .pytest_cache/
 
-# 4. Deep Learning Model Weights & Checkpoints (Quá lớn so với GitHub)
+# 4. Deep Learning Model Weights & Checkpoints
+# Chặn các file nặng / file đệm / checkpoint trung gian, nhưng giữ lại best_*.pth & log nhỏ trong code/system/checkpoints/
 *.pt
 *.pth
 *.ckpt
@@ -39,6 +40,11 @@ __pycache__/
 *.h5
 weights/
 checkpoints/
+!code/system/checkpoints/
+!code/system/checkpoints/**/
+code/system/checkpoints/feature_cache/
+code/system/checkpoints/**/last_*.pth
+!code/system/checkpoints/**/best_*.pth
 logs/
 wandb/
 

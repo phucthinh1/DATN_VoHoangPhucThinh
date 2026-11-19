@@ -1,0 +1,334 @@
+{
+  "run_id": "fusion_baseline_1794883760_71edf8",
+  "experiment_name": "fusion_baseline",
+  "stage": 2,
+  "head_type": "mlp",
+  "active_branches": [
+    "spatial",
+    "semantic",
+    "spectral"
+  ],
+  "input_key": "fusion",
+  "input_feature_dim": 2048,
+  "output_feature_dim": 128,
+  "trainable_params": 1118977,
+  "total_params": 1118977,
+  "branch_dropout_p": 0.0,
+  "min_active_branches": 2,
+  "hidden_dims": [
+    512,
+    128
+  ],
+  "hidden_dropouts": [
+    0.3,
+    0.2
+  ],
+  "linear_dropout": null,
+  "optimizer": "AdamW",
+  "lr": 0.0005,
+  "weight_decay": 0.0001,
+  "scheduler": "LinearLR(warmup=1) + CosineAnnealingLR(T_max=29)",
+  "warmup_epochs": 1,
+  "total_epochs": 30,
+  "patience": 6,
+  "min_delta": 0.0001,
+  "primary_metric": "auc",
+  "secondary_metric": "balanced_acc",
+  "max_norm": 1.0,
+  "batch_size": 32,
+  "eval_batch_size": 256,
+  "num_workers": 0,
+  "flip_prob": 0.5,
+  "seed": 42,
+  "device": "cuda",
+  "use_amp": true,
+  "amp_dtype": "torch.bfloat16",
+  "best_checkpoint_path": "D:\\nam_4\\DATN\\code\\system\\checkpoints\\stage2\\fusion_baseline\\best_fusion.pth",
+  "last_checkpoint_path": "D:\\nam_4\\DATN\\code\\system\\checkpoints\\stage2\\fusion_baseline\\last_fusion.pth",
+  "mirror_best_checkpoint_path": null,
+  "model_config": {
+    "model_type": "FusionMLP",
+    "input_key": "fusion",
+    "active_branches": [
+      "spatial",
+      "semantic",
+      "spectral"
+    ],
+    "branch_dims": {
+      "spatial": 1280,
+      "semantic": 512,
+      "spectral": 256
+    },
+    "total_feature_dim": 2048,
+    "input_feature_dim": 2048,
+    "output_feature_dim": 128,
+    "feature_dim": 128,
+    "hidden_dims": [
+      512,
+      128
+    ],
+    "hidden_dropouts": [
+      0.3,
+      0.2
+    ],
+    "branch_dropout_p": 0.0,
+    "min_active_branches": 2,
+    "layer_norm_eps": 1e-05,
+    "penultimate_dim": 128,
+    "total_params": 1118977
+  },
+  "cache_meta": {
+    "cache_dir": "D:\\nam_4\\DATN\\code\\system\\checkpoints\\feature_cache",
+    "active_branches": [
+      "spatial",
+      "semantic",
+      "spectral"
+    ],
+    "input_key": "fusion",
+    "total_feature_dim": 2048,
+    "train_num_samples": 27812,
+    "train_epoch_samples": 13906,
+    "train_num_groups": 6953,
+    "val_num_samples": 5836,
+    "train_manifest_hash": "db6e8d5e2a9aebc2b54cb88b287f244c92b4420f7c7139006bb0dc263a6cd72e",
+    "val_manifest_hash": "d0b596c04415653f1c947d6654984a0be9a1a8e903345db5db7ac90ba7c2077e",
+    "train_has_flip": true,
+    "train_extraction_signatures": {
+      "spatial": {
+        "branch": "spatial",
+        "split": "train",
+        "source": "checkpoint",
+        "checkpoint_sha256": "62abf03b7412f007b4321427384f45770c29296f05887175889256f4d265ae02",
+        "clip_model_name": null,
+        "clip_pretrained": null,
+        "clip_quick_gelu": null,
+        "clip_l2_normalize": null,
+        "open_clip_version": null,
+        "preprocess_config_hash": "7d5833f4db1b0c01831a8560fd7afe70c7d2239c3f287efcda93b603255048a1",
+        "has_flip": true,
+        "jpeg_quality": null,
+        "use_amp": true,
+        "amp_dtype": "torch.bfloat16"
+      },
+      "semantic": {
+        "branch": "semantic",
+        "split": "train",
+        "source": "open_clip_pretrained",
+        "checkpoint_sha256": null,
+        "clip_model_name": "ViT-B-16",
+        "clip_pretrained": "openai",
+        "clip_quick_gelu": true,
+        "clip_l2_normalize": true,
+        "open_clip_version": "4.2.1",
+        "preprocess_config_hash": "91be8f26a7c11e77025f584c5251a47917fb7bc66e6b7c04c0c671fae01db5b0",
+        "has_flip": true,
+        "jpeg_quality": null,
+        "use_amp": true,
+        "amp_dtype": "torch.bfloat16"
+      },
+      "spectral": {
+        "branch": "spectral",
+        "split": "train",
+        "source": "checkpoint",
+        "checkpoint_sha256": "90b971af728f4b4ce6d8fc658fe6473ab73fdd29b34f754445d6009e899035a5",
+        "clip_model_name": null,
+        "clip_pretrained": null,
+        "clip_quick_gelu": null,
+        "clip_l2_normalize": null,
+        "open_clip_version": null,
+        "preprocess_config_hash": "cd30c89609542fbcc9772cd3c1398f1d973b2cd33adb8ad79f53ef8636019f91",
+        "has_flip": true,
+        "jpeg_quality": null,
+        "use_amp": true,
+        "amp_dtype": "torch.bfloat16"
+      }
+    },
+    "val_extraction_signatures": {
+      "spatial": {
+        "branch": "spatial",
+        "split": "val",
+        "source": "checkpoint",
+        "checkpoint_sha256": "62abf03b7412f007b4321427384f45770c29296f05887175889256f4d265ae02",
+        "clip_model_name": null,
+        "clip_pretrained": null,
+        "clip_quick_gelu": null,
+        "clip_l2_normalize": null,
+        "open_clip_version": null,
+        "preprocess_config_hash": "8ff0f43ad7e3caeb0011f854f5d312bf83b70605c720398418c67d7c30ada875",
+        "has_flip": false,
+        "jpeg_quality": null,
+        "use_amp": true,
+        "amp_dtype": "torch.bfloat16"
+      },
+      "semantic": {
+        "branch": "semantic",
+        "split": "val",
+        "source": "open_clip_pretrained",
+        "checkpoint_sha256": null,
+        "clip_model_name": "ViT-B-16",
+        "clip_pretrained": "openai",
+        "clip_quick_gelu": true,
+        "clip_l2_normalize": true,
+        "open_clip_version": "4.2.1",
+        "preprocess_config_hash": "585901605ee9e6f5d26ab639c83c0a4eefdc7df0ee5890288f0617b01ce57604",
+        "has_flip": false,
+        "jpeg_quality": null,
+        "use_amp": true,
+        "amp_dtype": "torch.bfloat16"
+      },
+      "spectral": {
+        "branch": "spectral",
+        "split": "val",
+        "source": "checkpoint",
+        "checkpoint_sha256": "90b971af728f4b4ce6d8fc658fe6473ab73fdd29b34f754445d6009e899035a5",
+        "clip_model_name": null,
+        "clip_pretrained": null,
+        "clip_quick_gelu": null,
+        "clip_l2_normalize": null,
+        "open_clip_version": null,
+        "preprocess_config_hash": "c0250f15bafc87b05168a98b94339cce076e40b73009a8bf2a2e81d7c6ab4a2e",
+        "has_flip": false,
+        "jpeg_quality": null,
+        "use_amp": true,
+        "amp_dtype": "torch.bfloat16"
+      }
+    },
+    "train_checkpoint_infos": {
+      "spatial": {
+        "source": "checkpoint",
+        "checkpoint_path": "D:/nam_4/DATN/code/system/checkpoints/spatial_baseline/best_spatial.pth",
+        "checkpoint_sha256": "62abf03b7412f007b4321427384f45770c29296f05887175889256f4d265ae02",
+        "epoch": 15,
+        "val_metrics": {
+          "auc": 0.9985309369197796,
+          "balanced_acc": 0.9821795750514051,
+          "ap": 0.9994992203929535,
+          "acc": 0.9845784784098698,
+          "f1": 0.9896907216494846,
+          "precision": 0.9924190213645762,
+          "recall": 0.9869773817683345,
+          "fpr": 0.022618231665524333,
+          "tp": 4320,
+          "fp": 33,
+          "tn": 1426,
+          "fn": 57,
+          "num_real": 1459,
+          "num_ai": 4377,
+          "mean_prob_real": 0.023519496881034656,
+          "mean_prob_ai": 0.9849383145624898
+        },
+        "best_metrics": {
+          "auc": 0.9985309369197796,
+          "balanced_acc": 0.9821795750514051,
+          "ap": 0.9994992203929535,
+          "acc": 0.9845784784098698,
+          "f1": 0.9896907216494846,
+          "precision": 0.9924190213645762,
+          "recall": 0.9869773817683345,
+          "fpr": 0.022618231665524333,
+          "tp": 4320,
+          "fp": 33,
+          "tn": 1426,
+          "fn": 57,
+          "num_real": 1459,
+          "num_ai": 4377,
+          "mean_prob_real": 0.023519496881034656,
+          "mean_prob_ai": 0.9849383145624898
+        }
+      },
+      "semantic": {
+        "source": "open_clip_pretrained",
+        "model_name": "ViT-B-16",
+        "pretrained": "openai",
+        "quick_gelu": true,
+        "l2_normalize": true,
+        "open_clip_version": "4.2.1",
+        "epoch": 0,
+        "val_metrics": {}
+      },
+      "spectral": {
+        "source": "checkpoint",
+        "checkpoint_path": "D:/nam_4/DATN/code/system/checkpoints/spectral_baseline/best_spectral.pth",
+        "checkpoint_sha256": "90b971af728f4b4ce6d8fc658fe6473ab73fdd29b34f754445d6009e899035a5",
+        "epoch": 29,
+        "val_metrics": {
+          "auc": 0.9793876270485495,
+          "balanced_acc": 0.9232350925291295,
+          "ap": 0.9926362276492469,
+          "acc": 0.9283755997258396,
+          "f1": 0.9513387660069849,
+          "precision": 0.9698552100640874,
+          "recall": 0.9335161069225497,
+          "fpr": 0.08704592186429061,
+          "tp": 4086,
+          "fp": 127,
+          "tn": 1332,
+          "fn": 291,
+          "num_real": 1459,
+          "num_ai": 4377,
+          "mean_prob_real": 0.10293353928895824,
+          "mean_prob_ai": 0.8902799671915216
+        },
+        "best_metrics": {
+          "auc": 0.9793876270485495,
+          "balanced_acc": 0.9232350925291295,
+          "ap": 0.9926362276492469,
+          "acc": 0.9283755997258396,
+          "f1": 0.9513387660069849,
+          "precision": 0.9698552100640874,
+          "recall": 0.9335161069225497,
+          "fpr": 0.08704592186429061,
+          "tp": 4086,
+          "fp": 127,
+          "tn": 1332,
+          "fn": 291,
+          "num_real": 1459,
+          "num_ai": 4377,
+          "mean_prob_real": 0.10293353928895824,
+          "mean_prob_ai": 0.8902799671915216
+        }
+      }
+    },
+    "train_alignment": {
+      "aligned": true,
+      "branches": [
+        "spatial",
+        "semantic",
+        "spectral"
+      ],
+      "split": "train",
+      "num_samples": 27812,
+      "has_flip": true,
+      "jpeg_quality": null,
+      "manifest_hash": "db6e8d5e2a9aebc2b54cb88b287f244c92b4420f7c7139006bb0dc263a6cd72e",
+      "feature_dims": {
+        "spatial": 1280,
+        "semantic": 512,
+        "spectral": 256
+      }
+    },
+    "val_alignment": {
+      "aligned": true,
+      "branches": [
+        "spatial",
+        "semantic",
+        "spectral"
+      ],
+      "split": "val",
+      "num_samples": 5836,
+      "has_flip": false,
+      "jpeg_quality": null,
+      "manifest_hash": "d0b596c04415653f1c947d6654984a0be9a1a8e903345db5db7ac90ba7c2077e",
+      "feature_dims": {
+        "spatial": 1280,
+        "semantic": 512,
+        "spectral": 256
+      }
+    }
+  },
+  "best_epoch": 11,
+  "best_val_auc": 0.9997487489514243,
+  "best_val_balanced_acc": 0.9925748229380855,
+  "best_val_loss": 0.04641413475840651,
+  "elapsed_total_sec": 108.01962852478027
+}

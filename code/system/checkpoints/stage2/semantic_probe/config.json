@@ -1,0 +1,150 @@
+{
+  "run_id": "semantic_probe_1794853676_157e40",
+  "experiment_name": "semantic_probe",
+  "stage": 2,
+  "head_type": "linear",
+  "active_branches": [
+    "semantic"
+  ],
+  "input_key": "semantic",
+  "input_feature_dim": 512,
+  "output_feature_dim": 512,
+  "trainable_params": 513,
+  "total_params": 513,
+  "branch_dropout_p": 0.0,
+  "min_active_branches": 1,
+  "hidden_dims": [],
+  "hidden_dropouts": [],
+  "linear_dropout": 0.0,
+  "optimizer": "AdamW",
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "scheduler": "CosineAnnealingLR(T_max=30)",
+  "warmup_epochs": 0,
+  "total_epochs": 30,
+  "patience": 6,
+  "min_delta": 0.0001,
+  "primary_metric": "auc",
+  "secondary_metric": "balanced_acc",
+  "max_norm": 1.0,
+  "batch_size": 32,
+  "eval_batch_size": 256,
+  "num_workers": 0,
+  "flip_prob": 0.5,
+  "seed": 42,
+  "device": "cuda",
+  "use_amp": true,
+  "amp_dtype": "torch.bfloat16",
+  "best_checkpoint_path": "D:\\nam_4\\DATN\\code\\system\\checkpoints\\semantic_baseline\\best_semantic.pth",
+  "last_checkpoint_path": "D:\\nam_4\\DATN\\code\\system\\checkpoints\\stage2\\semantic_probe\\last_semantic.pth",
+  "mirror_best_checkpoint_path": "D:\\nam_4\\DATN\\code\\system\\checkpoints\\stage2\\semantic_probe\\best_semantic.pth",
+  "model_config": {
+    "model_type": "LinearProbeHead",
+    "branch": "semantic",
+    "input_key": "semantic",
+    "active_branches": [
+      "semantic"
+    ],
+    "feature_dim": 512,
+    "total_feature_dim": 512,
+    "dropout": 0.0,
+    "l2_normalize": false,
+    "total_params": 513
+  },
+  "cache_meta": {
+    "cache_dir": "D:\\nam_4\\DATN\\code\\system\\checkpoints\\feature_cache",
+    "active_branches": [
+      "semantic"
+    ],
+    "input_key": "semantic",
+    "total_feature_dim": 512,
+    "train_num_samples": 27812,
+    "train_epoch_samples": 13906,
+    "train_num_groups": 6953,
+    "val_num_samples": 5836,
+    "train_manifest_hash": "db6e8d5e2a9aebc2b54cb88b287f244c92b4420f7c7139006bb0dc263a6cd72e",
+    "val_manifest_hash": "d0b596c04415653f1c947d6654984a0be9a1a8e903345db5db7ac90ba7c2077e",
+    "train_has_flip": true,
+    "train_extraction_signatures": {
+      "semantic": {
+        "branch": "semantic",
+        "split": "train",
+        "source": "open_clip_pretrained",
+        "checkpoint_sha256": null,
+        "clip_model_name": "ViT-B-16",
+        "clip_pretrained": "openai",
+        "clip_quick_gelu": true,
+        "clip_l2_normalize": true,
+        "open_clip_version": "4.2.1",
+        "preprocess_config_hash": "91be8f26a7c11e77025f584c5251a47917fb7bc66e6b7c04c0c671fae01db5b0",
+        "has_flip": true,
+        "jpeg_quality": null,
+        "use_amp": true,
+        "amp_dtype": "torch.bfloat16"
+      }
+    },
+    "val_extraction_signatures": {
+      "semantic": {
+        "branch": "semantic",
+        "split": "val",
+        "source": "open_clip_pretrained",
+        "checkpoint_sha256": null,
+        "clip_model_name": "ViT-B-16",
+        "clip_pretrained": "openai",
+        "clip_quick_gelu": true,
+        "clip_l2_normalize": true,
+        "open_clip_version": "4.2.1",
+        "preprocess_config_hash": "585901605ee9e6f5d26ab639c83c0a4eefdc7df0ee5890288f0617b01ce57604",
+        "has_flip": false,
+        "jpeg_quality": null,
+        "use_amp": true,
+        "amp_dtype": "torch.bfloat16"
+      }
+    },
+    "train_checkpoint_infos": {
+      "semantic": {
+        "source": "open_clip_pretrained",
+        "model_name": "ViT-B-16",
+        "pretrained": "openai",
+        "quick_gelu": true,
+        "l2_normalize": true,
+        "open_clip_version": "4.2.1",
+        "epoch": 0,
+        "val_metrics": {}
+      }
+    },
+    "train_alignment": {
+      "aligned": true,
+      "branches": [
+        "semantic"
+      ],
+      "split": "train",
+      "num_samples": 27812,
+      "has_flip": true,
+      "jpeg_quality": null,
+      "manifest_hash": "db6e8d5e2a9aebc2b54cb88b287f244c92b4420f7c7139006bb0dc263a6cd72e",
+      "feature_dims": {
+        "semantic": 512
+      }
+    },
+    "val_alignment": {
+      "aligned": true,
+      "branches": [
+        "semantic"
+      ],
+      "split": "val",
+      "num_samples": 5836,
+      "has_flip": false,
+      "jpeg_quality": null,
+      "manifest_hash": "d0b596c04415653f1c947d6654984a0be9a1a8e903345db5db7ac90ba7c2077e",
+      "feature_dims": {
+        "semantic": 512
+      }
+    }
+  },
+  "best_epoch": 24,
+  "best_val_auc": 0.99595743404797,
+  "best_val_balanced_acc": 0.9701850582590816,
+  "best_val_loss": 0.109965976008493,
+  "elapsed_total_sec": 113.25094842910767
+}

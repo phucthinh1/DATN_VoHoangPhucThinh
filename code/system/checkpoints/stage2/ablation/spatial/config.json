@@ -1,0 +1,202 @@
+{
+  "run_id": "ablation_spatial_1794888851_aa0328",
+  "experiment_name": "ablation_spatial",
+  "stage": 2,
+  "head_type": "mlp",
+  "active_branches": [
+    "spatial"
+  ],
+  "input_key": "fusion",
+  "input_feature_dim": 1280,
+  "output_feature_dim": 128,
+  "trainable_params": 724225,
+  "total_params": 724225,
+  "branch_dropout_p": 0.0,
+  "min_active_branches": 2,
+  "hidden_dims": [
+    512,
+    128
+  ],
+  "hidden_dropouts": [
+    0.3,
+    0.2
+  ],
+  "linear_dropout": null,
+  "optimizer": "AdamW",
+  "lr": 0.0005,
+  "weight_decay": 0.0001,
+  "scheduler": "LinearLR(warmup=1) + CosineAnnealingLR(T_max=29)",
+  "warmup_epochs": 1,
+  "total_epochs": 30,
+  "patience": 6,
+  "min_delta": 0.0001,
+  "primary_metric": "auc",
+  "secondary_metric": "balanced_acc",
+  "max_norm": 1.0,
+  "batch_size": 32,
+  "eval_batch_size": 256,
+  "num_workers": 0,
+  "flip_prob": 0.5,
+  "seed": 42,
+  "device": "cuda",
+  "use_amp": true,
+  "amp_dtype": "torch.bfloat16",
+  "best_checkpoint_path": "D:\\nam_4\\DATN\\code\\system\\checkpoints\\stage2\\ablation\\spatial\\best_spatial.pth",
+  "last_checkpoint_path": "D:\\nam_4\\DATN\\code\\system\\checkpoints\\stage2\\ablation\\spatial\\last_spatial.pth",
+  "mirror_best_checkpoint_path": null,
+  "model_config": {
+    "model_type": "FusionMLP",
+    "input_key": "fusion",
+    "active_branches": [
+      "spatial"
+    ],
+    "branch_dims": {
+      "spatial": 1280
+    },
+    "total_feature_dim": 1280,
+    "input_feature_dim": 1280,
+    "output_feature_dim": 128,
+    "feature_dim": 128,
+    "hidden_dims": [
+      512,
+      128
+    ],
+    "hidden_dropouts": [
+      0.3,
+      0.2
+    ],
+    "branch_dropout_p": 0.0,
+    "min_active_branches": 2,
+    "layer_norm_eps": 1e-05,
+    "penultimate_dim": 128,
+    "total_params": 724225
+  },
+  "cache_meta": {
+    "cache_dir": "D:\\nam_4\\DATN\\code\\system\\checkpoints\\feature_cache",
+    "active_branches": [
+      "spatial"
+    ],
+    "input_key": "fusion",
+    "total_feature_dim": 1280,
+    "train_num_samples": 27812,
+    "train_epoch_samples": 13906,
+    "train_num_groups": 6953,
+    "val_num_samples": 5836,
+    "train_manifest_hash": "db6e8d5e2a9aebc2b54cb88b287f244c92b4420f7c7139006bb0dc263a6cd72e",
+    "val_manifest_hash": "d0b596c04415653f1c947d6654984a0be9a1a8e903345db5db7ac90ba7c2077e",
+    "train_has_flip": true,
+    "train_extraction_signatures": {
+      "spatial": {
+        "branch": "spatial",
+        "split": "train",
+        "source": "checkpoint",
+        "checkpoint_sha256": "62abf03b7412f007b4321427384f45770c29296f05887175889256f4d265ae02",
+        "clip_model_name": null,
+        "clip_pretrained": null,
+        "clip_quick_gelu": null,
+        "clip_l2_normalize": null,
+        "open_clip_version": null,
+        "preprocess_config_hash": "7d5833f4db1b0c01831a8560fd7afe70c7d2239c3f287efcda93b603255048a1",
+        "has_flip": true,
+        "jpeg_quality": null,
+        "use_amp": true,
+        "amp_dtype": "torch.bfloat16"
+      }
+    },
+    "val_extraction_signatures": {
+      "spatial": {
+        "branch": "spatial",
+        "split": "val",
+        "source": "checkpoint",
+        "checkpoint_sha256": "62abf03b7412f007b4321427384f45770c29296f05887175889256f4d265ae02",
+        "clip_model_name": null,
+        "clip_pretrained": null,
+        "clip_quick_gelu": null,
+        "clip_l2_normalize": null,
+        "open_clip_version": null,
+        "preprocess_config_hash": "8ff0f43ad7e3caeb0011f854f5d312bf83b70605c720398418c67d7c30ada875",
+        "has_flip": false,
+        "jpeg_quality": null,
+        "use_amp": true,
+        "amp_dtype": "torch.bfloat16"
+      }
+    },
+    "train_checkpoint_infos": {
+      "spatial": {
+        "source": "checkpoint",
+        "checkpoint_path": "D:/nam_4/DATN/code/system/checkpoints/spatial_baseline/best_spatial.pth",
+        "checkpoint_sha256": "62abf03b7412f007b4321427384f45770c29296f05887175889256f4d265ae02",
+        "epoch": 15,
+        "val_metrics": {
+          "auc": 0.9985309369197796,
+          "balanced_acc": 0.9821795750514051,
+          "ap": 0.9994992203929535,
+          "acc": 0.9845784784098698,
+          "f1": 0.9896907216494846,
+          "precision": 0.9924190213645762,
+          "recall": 0.9869773817683345,
+          "fpr": 0.022618231665524333,
+          "tp": 4320,
+          "fp": 33,
+          "tn": 1426,
+          "fn": 57,
+          "num_real": 1459,
+          "num_ai": 4377,
+          "mean_prob_real": 0.023519496881034656,
+          "mean_prob_ai": 0.9849383145624898
+        },
+        "best_metrics": {
+          "auc": 0.9985309369197796,
+          "balanced_acc": 0.9821795750514051,
+          "ap": 0.9994992203929535,
+          "acc": 0.9845784784098698,
+          "f1": 0.9896907216494846,
+          "precision": 0.9924190213645762,
+          "recall": 0.9869773817683345,
+          "fpr": 0.022618231665524333,
+          "tp": 4320,
+          "fp": 33,
+          "tn": 1426,
+          "fn": 57,
+          "num_real": 1459,
+          "num_ai": 4377,
+          "mean_prob_real": 0.023519496881034656,
+          "mean_prob_ai": 0.9849383145624898
+        }
+      }
+    },
+    "train_alignment": {
+      "aligned": true,
+      "branches": [
+        "spatial"
+      ],
+      "split": "train",
+      "num_samples": 27812,
+      "has_flip": true,
+      "jpeg_quality": null,
+      "manifest_hash": "db6e8d5e2a9aebc2b54cb88b287f244c92b4420f7c7139006bb0dc263a6cd72e",
+      "feature_dims": {
+        "spatial": 1280
+      }
+    },
+    "val_alignment": {
+      "aligned": true,
+      "branches": [
+        "spatial"
+      ],
+      "split": "val",
+      "num_samples": 5836,
+      "has_flip": false,
+      "jpeg_quality": null,
+      "manifest_hash": "d0b596c04415653f1c947d6654984a0be9a1a8e903345db5db7ac90ba7c2077e",
+      "feature_dims": {
+        "spatial": 1280
+      }
+    }
+  },
+  "best_epoch": 3,
+  "best_val_auc": 0.9984491961610656,
+  "best_val_balanced_acc": 0.9822938085446653,
+  "best_val_loss": 0.06084572877722133,
+  "elapsed_total_sec": 46.726558446884155
+}

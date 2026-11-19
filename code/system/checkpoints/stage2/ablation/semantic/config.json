@@ -1,0 +1,170 @@
+{
+  "run_id": "ablation_semantic_1794888897_31106a",
+  "experiment_name": "ablation_semantic",
+  "stage": 2,
+  "head_type": "mlp",
+  "active_branches": [
+    "semantic"
+  ],
+  "input_key": "fusion",
+  "input_feature_dim": 512,
+  "output_feature_dim": 128,
+  "trainable_params": 329473,
+  "total_params": 329473,
+  "branch_dropout_p": 0.0,
+  "min_active_branches": 2,
+  "hidden_dims": [
+    512,
+    128
+  ],
+  "hidden_dropouts": [
+    0.3,
+    0.2
+  ],
+  "linear_dropout": null,
+  "optimizer": "AdamW",
+  "lr": 0.0005,
+  "weight_decay": 0.0001,
+  "scheduler": "LinearLR(warmup=1) + CosineAnnealingLR(T_max=29)",
+  "warmup_epochs": 1,
+  "total_epochs": 30,
+  "patience": 6,
+  "min_delta": 0.0001,
+  "primary_metric": "auc",
+  "secondary_metric": "balanced_acc",
+  "max_norm": 1.0,
+  "batch_size": 32,
+  "eval_batch_size": 256,
+  "num_workers": 0,
+  "flip_prob": 0.5,
+  "seed": 42,
+  "device": "cuda",
+  "use_amp": true,
+  "amp_dtype": "torch.bfloat16",
+  "best_checkpoint_path": "D:\\nam_4\\DATN\\code\\system\\checkpoints\\stage2\\ablation\\semantic\\best_semantic.pth",
+  "last_checkpoint_path": "D:\\nam_4\\DATN\\code\\system\\checkpoints\\stage2\\ablation\\semantic\\last_semantic.pth",
+  "mirror_best_checkpoint_path": null,
+  "model_config": {
+    "model_type": "FusionMLP",
+    "input_key": "fusion",
+    "active_branches": [
+      "semantic"
+    ],
+    "branch_dims": {
+      "semantic": 512
+    },
+    "total_feature_dim": 512,
+    "input_feature_dim": 512,
+    "output_feature_dim": 128,
+    "feature_dim": 128,
+    "hidden_dims": [
+      512,
+      128
+    ],
+    "hidden_dropouts": [
+      0.3,
+      0.2
+    ],
+    "branch_dropout_p": 0.0,
+    "min_active_branches": 2,
+    "layer_norm_eps": 1e-05,
+    "penultimate_dim": 128,
+    "total_params": 329473
+  },
+  "cache_meta": {
+    "cache_dir": "D:\\nam_4\\DATN\\code\\system\\checkpoints\\feature_cache",
+    "active_branches": [
+      "semantic"
+    ],
+    "input_key": "fusion",
+    "total_feature_dim": 512,
+    "train_num_samples": 27812,
+    "train_epoch_samples": 13906,
+    "train_num_groups": 6953,
+    "val_num_samples": 5836,
+    "train_manifest_hash": "db6e8d5e2a9aebc2b54cb88b287f244c92b4420f7c7139006bb0dc263a6cd72e",
+    "val_manifest_hash": "d0b596c04415653f1c947d6654984a0be9a1a8e903345db5db7ac90ba7c2077e",
+    "train_has_flip": true,
+    "train_extraction_signatures": {
+      "semantic": {
+        "branch": "semantic",
+        "split": "train",
+        "source": "open_clip_pretrained",
+        "checkpoint_sha256": null,
+        "clip_model_name": "ViT-B-16",
+        "clip_pretrained": "openai",
+        "clip_quick_gelu": true,
+        "clip_l2_normalize": true,
+        "open_clip_version": "4.2.1",
+        "preprocess_config_hash": "91be8f26a7c11e77025f584c5251a47917fb7bc66e6b7c04c0c671fae01db5b0",
+        "has_flip": true,
+        "jpeg_quality": null,
+        "use_amp": true,
+        "amp_dtype": "torch.bfloat16"
+      }
+    },
+    "val_extraction_signatures": {
+      "semantic": {
+        "branch": "semantic",
+        "split": "val",
+        "source": "open_clip_pretrained",
+        "checkpoint_sha256": null,
+        "clip_model_name": "ViT-B-16",
+        "clip_pretrained": "openai",
+        "clip_quick_gelu": true,
+        "clip_l2_normalize": true,
+        "open_clip_version": "4.2.1",
+        "preprocess_config_hash": "585901605ee9e6f5d26ab639c83c0a4eefdc7df0ee5890288f0617b01ce57604",
+        "has_flip": false,
+        "jpeg_quality": null,
+        "use_amp": true,
+        "amp_dtype": "torch.bfloat16"
+      }
+    },
+    "train_checkpoint_infos": {
+      "semantic": {
+        "source": "open_clip_pretrained",
+        "model_name": "ViT-B-16",
+        "pretrained": "openai",
+        "quick_gelu": true,
+        "l2_normalize": true,
+        "open_clip_version": "4.2.1",
+        "epoch": 0,
+        "val_metrics": {}
+      }
+    },
+    "train_alignment": {
+      "aligned": true,
+      "branches": [
+        "semantic"
+      ],
+      "split": "train",
+      "num_samples": 27812,
+      "has_flip": true,
+      "jpeg_quality": null,
+      "manifest_hash": "db6e8d5e2a9aebc2b54cb88b287f244c92b4420f7c7139006bb0dc263a6cd72e",
+      "feature_dims": {
+        "semantic": 512
+      }
+    },
+    "val_alignment": {
+      "aligned": true,
+      "branches": [
+        "semantic"
+      ],
+      "split": "val",
+      "num_samples": 5836,
+      "has_flip": false,
+      "jpeg_quality": null,
+      "manifest_hash": "d0b596c04415653f1c947d6654984a0be9a1a8e903345db5db7ac90ba7c2077e",
+      "feature_dims": {
+        "semantic": 512
+      }
+    }
+  },
+  "best_epoch": 12,
+  "best_val_auc": 0.9996107135514121,
+  "best_val_balanced_acc": 0.98983321909984,
+  "best_val_loss": 0.03100927796079493,
+  "elapsed_total_sec": 92.84659457206726
+}

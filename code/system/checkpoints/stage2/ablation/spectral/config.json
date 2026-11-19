@@ -1,0 +1,202 @@
+{
+  "run_id": "ablation_spectral_1794888989_1575bb",
+  "experiment_name": "ablation_spectral",
+  "stage": 2,
+  "head_type": "mlp",
+  "active_branches": [
+    "spectral"
+  ],
+  "input_key": "fusion",
+  "input_feature_dim": 256,
+  "output_feature_dim": 128,
+  "trainable_params": 197889,
+  "total_params": 197889,
+  "branch_dropout_p": 0.0,
+  "min_active_branches": 2,
+  "hidden_dims": [
+    512,
+    128
+  ],
+  "hidden_dropouts": [
+    0.3,
+    0.2
+  ],
+  "linear_dropout": null,
+  "optimizer": "AdamW",
+  "lr": 0.0005,
+  "weight_decay": 0.0001,
+  "scheduler": "LinearLR(warmup=1) + CosineAnnealingLR(T_max=29)",
+  "warmup_epochs": 1,
+  "total_epochs": 30,
+  "patience": 6,
+  "min_delta": 0.0001,
+  "primary_metric": "auc",
+  "secondary_metric": "balanced_acc",
+  "max_norm": 1.0,
+  "batch_size": 32,
+  "eval_batch_size": 256,
+  "num_workers": 0,
+  "flip_prob": 0.5,
+  "seed": 42,
+  "device": "cuda",
+  "use_amp": true,
+  "amp_dtype": "torch.bfloat16",
+  "best_checkpoint_path": "D:\\nam_4\\DATN\\code\\system\\checkpoints\\stage2\\ablation\\spectral\\best_spectral.pth",
+  "last_checkpoint_path": "D:\\nam_4\\DATN\\code\\system\\checkpoints\\stage2\\ablation\\spectral\\last_spectral.pth",
+  "mirror_best_checkpoint_path": null,
+  "model_config": {
+    "model_type": "FusionMLP",
+    "input_key": "fusion",
+    "active_branches": [
+      "spectral"
+    ],
+    "branch_dims": {
+      "spectral": 256
+    },
+    "total_feature_dim": 256,
+    "input_feature_dim": 256,
+    "output_feature_dim": 128,
+    "feature_dim": 128,
+    "hidden_dims": [
+      512,
+      128
+    ],
+    "hidden_dropouts": [
+      0.3,
+      0.2
+    ],
+    "branch_dropout_p": 0.0,
+    "min_active_branches": 2,
+    "layer_norm_eps": 1e-05,
+    "penultimate_dim": 128,
+    "total_params": 197889
+  },
+  "cache_meta": {
+    "cache_dir": "D:\\nam_4\\DATN\\code\\system\\checkpoints\\feature_cache",
+    "active_branches": [
+      "spectral"
+    ],
+    "input_key": "fusion",
+    "total_feature_dim": 256,
+    "train_num_samples": 27812,
+    "train_epoch_samples": 13906,
+    "train_num_groups": 6953,
+    "val_num_samples": 5836,
+    "train_manifest_hash": "db6e8d5e2a9aebc2b54cb88b287f244c92b4420f7c7139006bb0dc263a6cd72e",
+    "val_manifest_hash": "d0b596c04415653f1c947d6654984a0be9a1a8e903345db5db7ac90ba7c2077e",
+    "train_has_flip": true,
+    "train_extraction_signatures": {
+      "spectral": {
+        "branch": "spectral",
+        "split": "train",
+        "source": "checkpoint",
+        "checkpoint_sha256": "90b971af728f4b4ce6d8fc658fe6473ab73fdd29b34f754445d6009e899035a5",
+        "clip_model_name": null,
+        "clip_pretrained": null,
+        "clip_quick_gelu": null,
+        "clip_l2_normalize": null,
+        "open_clip_version": null,
+        "preprocess_config_hash": "cd30c89609542fbcc9772cd3c1398f1d973b2cd33adb8ad79f53ef8636019f91",
+        "has_flip": true,
+        "jpeg_quality": null,
+        "use_amp": true,
+        "amp_dtype": "torch.bfloat16"
+      }
+    },
+    "val_extraction_signatures": {
+      "spectral": {
+        "branch": "spectral",
+        "split": "val",
+        "source": "checkpoint",
+        "checkpoint_sha256": "90b971af728f4b4ce6d8fc658fe6473ab73fdd29b34f754445d6009e899035a5",
+        "clip_model_name": null,
+        "clip_pretrained": null,
+        "clip_quick_gelu": null,
+        "clip_l2_normalize": null,
+        "open_clip_version": null,
+        "preprocess_config_hash": "c0250f15bafc87b05168a98b94339cce076e40b73009a8bf2a2e81d7c6ab4a2e",
+        "has_flip": false,
+        "jpeg_quality": null,
+        "use_amp": true,
+        "amp_dtype": "torch.bfloat16"
+      }
+    },
+    "train_checkpoint_infos": {
+      "spectral": {
+        "source": "checkpoint",
+        "checkpoint_path": "D:/nam_4/DATN/code/system/checkpoints/spectral_baseline/best_spectral.pth",
+        "checkpoint_sha256": "90b971af728f4b4ce6d8fc658fe6473ab73fdd29b34f754445d6009e899035a5",
+        "epoch": 29,
+        "val_metrics": {
+          "auc": 0.9793876270485495,
+          "balanced_acc": 0.9232350925291295,
+          "ap": 0.9926362276492469,
+          "acc": 0.9283755997258396,
+          "f1": 0.9513387660069849,
+          "precision": 0.9698552100640874,
+          "recall": 0.9335161069225497,
+          "fpr": 0.08704592186429061,
+          "tp": 4086,
+          "fp": 127,
+          "tn": 1332,
+          "fn": 291,
+          "num_real": 1459,
+          "num_ai": 4377,
+          "mean_prob_real": 0.10293353928895824,
+          "mean_prob_ai": 0.8902799671915216
+        },
+        "best_metrics": {
+          "auc": 0.9793876270485495,
+          "balanced_acc": 0.9232350925291295,
+          "ap": 0.9926362276492469,
+          "acc": 0.9283755997258396,
+          "f1": 0.9513387660069849,
+          "precision": 0.9698552100640874,
+          "recall": 0.9335161069225497,
+          "fpr": 0.08704592186429061,
+          "tp": 4086,
+          "fp": 127,
+          "tn": 1332,
+          "fn": 291,
+          "num_real": 1459,
+          "num_ai": 4377,
+          "mean_prob_real": 0.10293353928895824,
+          "mean_prob_ai": 0.8902799671915216
+        }
+      }
+    },
+    "train_alignment": {
+      "aligned": true,
+      "branches": [
+        "spectral"
+      ],
+      "split": "train",
+      "num_samples": 27812,
+      "has_flip": true,
+      "jpeg_quality": null,
+      "manifest_hash": "db6e8d5e2a9aebc2b54cb88b287f244c92b4420f7c7139006bb0dc263a6cd72e",
+      "feature_dims": {
+        "spectral": 256
+      }
+    },
+    "val_alignment": {
+      "aligned": true,
+      "branches": [
+        "spectral"
+      ],
+      "split": "val",
+      "num_samples": 5836,
+      "has_flip": false,
+      "jpeg_quality": null,
+      "manifest_hash": "d0b596c04415653f1c947d6654984a0be9a1a8e903345db5db7ac90ba7c2077e",
+      "feature_dims": {
+        "spectral": 256
+      }
+    }
+  },
+  "best_epoch": 8,
+  "best_val_auc": 0.979797348686816,
+  "best_val_balanced_acc": 0.9236920265021704,
+  "best_val_loss": 0.16668312660098647,
+  "elapsed_total_sec": 74.33540344238281
+}
